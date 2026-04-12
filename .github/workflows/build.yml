@@ -1,0 +1,86 @@
+name: Build Test Releases
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test
+
+  build-windows:
+    name: Build Windows
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build
+      - name: Package Windows installer
+        run: npx electron-builder --win --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/*.exe
+          if-no-files-found: error
+
+  build-macos:
+    name: Build macOS
+    needs: test
+    runs-on: macos-latest
+    env:
+      # Belt-and-suspenders with mac.identity: null in electron-builder.yml.
+      # Prevents electron-builder from probing the keychain for a signing identity.
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build
+      - name: Package macOS DMGs (x64 + arm64)
+        run: npx electron-builder --mac --x64 --arm64 --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-installer
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: List downloaded artifacts
+        run: find artifacts -type f
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/windows-installer/*.exe
+            artifacts/macos-installer/*.dmg
+          draft: false
+          prerelease: true
+          generate_release_notes: true

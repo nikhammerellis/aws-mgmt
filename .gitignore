@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+out/
+dist/
+
+# Test outputs
+coverage/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor caches
+.vscode/.history/
+.idea/
+
+# Claude Code local settings
+.claude/
+
+# Environment overrides
+.env
+.env.local
