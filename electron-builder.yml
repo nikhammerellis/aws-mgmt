@@ -1,0 +1,39 @@
+appId: com.awsmgmt.app
+productName: AWS Profile Manager
+directories:
+  output: dist
+  buildResources: resources
+files:
+  - out/**/*
+extraResources:
+  - from: resources/tray-icon.png
+    to: tray-icon.png
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: resources/icon.png
+  artifactName: ${productName}-${version}-Setup-${arch}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  icon: resources/icon.png
+  category: public.app-category.utilities
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  # Explicitly skip code signing for unsigned test builds. Without this,
+  # electron-builder probes the keychain on CI and fails when it finds nothing.
+  identity: null
+linux:
+  target:
+    - AppImage
+  icon: resources/icon.png
+  category: Utility
