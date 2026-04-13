@@ -77,37 +77,15 @@ export async function launchTerminalWithProfile(name: string): Promise<void> {
     throw new Error(`Invalid profile name: ${name}`)
   }
 
-  const envExtras = { AWS_PROFILE: name }
+  // Don't rely on spawn env inheritance — Windows Terminal (wt.exe) is a UWP
+  // bridge that doesn't propagate the parent's env to its child shell. Instead,
+  // explicitly set the variable via a shell command in the new session.
+  const setCommand =
+    process.platform === 'win32'
+      ? `set AWS_PROFILE=${name} && echo AWS_PROFILE set to ${name}`
+      : `export AWS_PROFILE=${name} && echo AWS_PROFILE set to ${name}`
 
-  if (process.platform === 'win32') {
-    await tryLaunchSequence(
-      [
-        { cmd: 'wt.exe', args: [] },
-        { cmd: 'cmd.exe', args: ['/K', `echo Started with AWS_PROFILE=${name}`] }
-      ],
-      envExtras
-    )
-    return
-  }
-
-  if (process.platform === 'darwin') {
-    // osascript inherits no env, so embed the export in the script body.
-    // The name is regex-validated above so the AppleScript string is safe.
-    const script = `tell application "Terminal" to do script "export AWS_PROFILE=${name}; clear"`
-    await spawnDetached('osascript', ['-e', script], {})
-    return
-  }
-
-  // Linux + others
-  await tryLaunchSequence(
-    [
-      { cmd: 'x-terminal-emulator', args: [] },
-      { cmd: 'gnome-terminal', args: [] },
-      { cmd: 'konsole', args: [] },
-      { cmd: 'xterm', args: [] }
-    ],
-    envExtras
-  )
+  await launchTerminalWithCommand(setCommand)
 }
 
 /**
