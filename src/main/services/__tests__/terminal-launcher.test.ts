@@ -94,7 +94,7 @@ describe('launchTerminalWithProfile', () => {
     expect(mockSpawn).not.toHaveBeenCalled()
   })
 
-  it('embeds a set command on Windows instead of relying on env inheritance', async () => {
+  it('opens PowerShell via wt.exe with $env set on Windows', async () => {
     setPlatform('win32')
     mockSpawn.mockReturnValue(makeChild() as unknown as ReturnType<typeof spawn>)
 
@@ -102,7 +102,8 @@ describe('launchTerminalWithProfile', () => {
 
     const [cmd, args] = mockSpawn.mock.calls[0]
     expect(cmd).toBe('wt.exe')
-    expect((args as string[]).join(' ')).toContain('set AWS_PROFILE=dev')
+    expect((args as string[])[0]).toBe('pwsh')
+    expect((args as string[]).join(' ')).toContain("$env:AWS_PROFILE = 'dev'")
   })
 
   it('falls back to cmd.exe when wt.exe is not available', async () => {
@@ -118,8 +119,8 @@ describe('launchTerminalWithProfile', () => {
 
     expect(mockSpawn).toHaveBeenCalledTimes(2)
     expect(mockSpawn.mock.calls[0][0]).toBe('wt.exe')
-    expect(mockSpawn.mock.calls[1][0]).toBe('cmd.exe')
-    expect((mockSpawn.mock.calls[1][1] as string[]).join(' ')).toContain('set AWS_PROFILE=dev')
+    expect(mockSpawn.mock.calls[1][0]).toBe('pwsh')
+    expect((mockSpawn.mock.calls[1][1] as string[]).join(' ')).toContain('AWS_PROFILE')
   })
 
   it('embeds an export command on darwin via osascript', async () => {
@@ -163,7 +164,7 @@ describe('launchLoginInTerminal', () => {
     expect(mockSpawn).not.toHaveBeenCalled()
   })
 
-  it('spawns wt.exe with cmd.exe /K and the aws sso login command on Windows', async () => {
+  it('spawns wt.exe with pwsh and the aws sso login command on Windows', async () => {
     setPlatform('win32')
     mockSpawn.mockReturnValue(makeChild() as unknown as ReturnType<typeof spawn>)
 
@@ -171,7 +172,8 @@ describe('launchLoginInTerminal', () => {
 
     const [cmd, args] = mockSpawn.mock.calls[0]
     expect(cmd).toBe('wt.exe')
-    expect(args).toEqual(['cmd.exe', '/K', 'aws sso login --profile dev'])
+    expect((args as string[])[0]).toBe('pwsh')
+    expect((args as string[]).join(' ')).toContain('aws sso login --profile dev')
   })
 
   it('builds the saml2aws command with the SAML section name', async () => {
@@ -199,7 +201,7 @@ describe('launchLoginInTerminal', () => {
     expect((args as string[])[1]).toContain('aws sso login --profile dev')
   })
 
-  it('falls back from wt.exe to cmd.exe on Windows', async () => {
+  it('falls back from wt.exe to standalone pwsh on Windows', async () => {
     setPlatform('win32')
     mockSpawn.mockImplementationOnce(() => {
       const child = makeChild()
@@ -212,6 +214,6 @@ describe('launchLoginInTerminal', () => {
 
     expect(mockSpawn).toHaveBeenCalledTimes(2)
     expect(mockSpawn.mock.calls[0][0]).toBe('wt.exe')
-    expect(mockSpawn.mock.calls[1][0]).toBe('cmd.exe')
+    expect(mockSpawn.mock.calls[1][0]).toBe('pwsh')
   })
 })

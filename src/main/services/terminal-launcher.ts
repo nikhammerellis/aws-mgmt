@@ -82,7 +82,7 @@ export async function launchTerminalWithProfile(name: string): Promise<void> {
   // explicitly set the variable via a shell command in the new session.
   const setCommand =
     process.platform === 'win32'
-      ? `set AWS_PROFILE=${name} && echo AWS_PROFILE set to ${name}`
+      ? `$env:AWS_PROFILE = '${name}'; Write-Host "AWS_PROFILE set to ${name}"`
       : `export AWS_PROFILE=${name} && echo AWS_PROFILE set to ${name}`
 
   await launchTerminalWithCommand(setCommand)
@@ -99,12 +99,14 @@ export async function launchTerminalWithProfile(name: string): Promise<void> {
  */
 export async function launchTerminalWithCommand(commandLine: string): Promise<void> {
   if (process.platform === 'win32') {
-    // Windows Terminal first; cmd.exe direct as a fallback. `/K` runs the
-    // command and keeps the shell open.
+    // PowerShell via Windows Terminal first, then standalone PowerShell 7
+    // (pwsh), then Windows PowerShell 5.1 (powershell.exe) as last resort.
+    // -NoExit keeps the shell open after the command finishes.
     await tryLaunchSequence(
       [
-        { cmd: 'wt.exe', args: ['cmd.exe', '/K', commandLine] },
-        { cmd: 'cmd.exe', args: ['/K', commandLine] }
+        { cmd: 'wt.exe', args: ['pwsh', '-NoExit', '-Command', commandLine] },
+        { cmd: 'pwsh', args: ['-NoExit', '-Command', commandLine] },
+        { cmd: 'powershell.exe', args: ['-NoExit', '-Command', commandLine] }
       ],
       {}
     )
