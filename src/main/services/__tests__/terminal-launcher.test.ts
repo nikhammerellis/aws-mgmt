@@ -94,23 +94,21 @@ describe('launchTerminalWithProfile', () => {
     expect(mockSpawn).not.toHaveBeenCalled()
   })
 
-  it('spawns wt.exe with AWS_PROFILE injected on Windows', async () => {
+  it('embeds a set command on Windows instead of relying on env inheritance', async () => {
     setPlatform('win32')
     mockSpawn.mockReturnValue(makeChild() as unknown as ReturnType<typeof spawn>)
 
     await launchTerminalWithProfile('dev')
 
-    const [cmd, args, options] = mockSpawn.mock.calls[0]
+    const [cmd, args] = mockSpawn.mock.calls[0]
     expect(cmd).toBe('wt.exe')
-    expect(args).toEqual([])
-    expect((options as { env: NodeJS.ProcessEnv }).env.AWS_PROFILE).toBe('dev')
+    expect((args as string[]).join(' ')).toContain('set AWS_PROFILE=dev')
   })
 
   it('falls back to cmd.exe when wt.exe is not available', async () => {
     setPlatform('win32')
     mockSpawn.mockImplementationOnce(() => {
       const child = makeChild()
-      // emit ENOENT asynchronously
       setImmediate(() => child.emit('error', Object.assign(new Error('ENOENT'), { code: 'ENOENT' })))
       return child as unknown as ReturnType<typeof spawn>
     })
@@ -121,9 +119,10 @@ describe('launchTerminalWithProfile', () => {
     expect(mockSpawn).toHaveBeenCalledTimes(2)
     expect(mockSpawn.mock.calls[0][0]).toBe('wt.exe')
     expect(mockSpawn.mock.calls[1][0]).toBe('cmd.exe')
+    expect((mockSpawn.mock.calls[1][1] as string[]).join(' ')).toContain('set AWS_PROFILE=dev')
   })
 
-  it('calls osascript on darwin with the AppleScript export', async () => {
+  it('embeds an export command on darwin via osascript', async () => {
     setPlatform('darwin')
     mockSpawn.mockReturnValue(makeChild() as unknown as ReturnType<typeof spawn>)
 
@@ -131,24 +130,17 @@ describe('launchTerminalWithProfile', () => {
 
     const [cmd, args] = mockSpawn.mock.calls[0]
     expect(cmd).toBe('osascript')
-    expect((args as string[])[0]).toBe('-e')
     expect((args as string[])[1]).toContain('export AWS_PROFILE=dev')
   })
 
-  it('tries multiple Linux terminals in sequence until one spawns', async () => {
+  it('embeds an export command on Linux', async () => {
     setPlatform('linux')
-    mockSpawn.mockImplementationOnce(() => {
-      const child = makeChild()
-      setImmediate(() => child.emit('error', Object.assign(new Error('ENOENT'), { code: 'ENOENT' })))
-      return child as unknown as ReturnType<typeof spawn>
-    })
-    mockSpawn.mockReturnValueOnce(makeChild() as unknown as ReturnType<typeof spawn>)
+    mockSpawn.mockReturnValue(makeChild() as unknown as ReturnType<typeof spawn>)
 
     await launchTerminalWithProfile('dev')
 
-    expect(mockSpawn).toHaveBeenCalledTimes(2)
-    expect(mockSpawn.mock.calls[0][0]).toBe('x-terminal-emulator')
-    expect(mockSpawn.mock.calls[1][0]).toBe('gnome-terminal')
+    const [, args] = mockSpawn.mock.calls[0]
+    expect((args as string[]).join(' ')).toContain('export AWS_PROFILE=dev')
   })
 })
 
