@@ -16,6 +16,9 @@ import type {
  * a silent runtime `undefined`.
  */
 const api: ElectronAPI = {
+  // App meta
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+
   // AWS Profiles
   getProfiles: () => ipcRenderer.invoke('get-profiles'),
   getActiveProfile: () => ipcRenderer.invoke('get-active-profile'),

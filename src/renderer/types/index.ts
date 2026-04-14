@@ -135,6 +135,7 @@ export interface SamlProfile {
 export interface ElectronAPI {
   // AWS Profiles
   getProfiles(): Promise<AwsProfile[]>
+  getAppVersion(): Promise<string>
   getActiveProfile(): Promise<string | null>
   switchProfile(name: string): Promise<SwitchResult>
   addProfile(data: NewProfileData): Promise<void>

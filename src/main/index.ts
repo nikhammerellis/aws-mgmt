@@ -13,7 +13,7 @@ function createWindow(): void {
     height: 650,
     minWidth: 700,
     minHeight: 500,
-    title: 'AWS Profile Manager',
+    title: `AWS Profile Manager ${app.getVersion()}`,
     show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

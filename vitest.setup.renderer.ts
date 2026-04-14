@@ -3,6 +3,7 @@ import { vi } from 'vitest'
 
 // Mock window.api (the preload bridge)
 const mockApi = {
+  getAppVersion: vi.fn().mockResolvedValue('0.0.0-test'),
   getProfiles: vi.fn().mockResolvedValue([]),
   getActiveProfile: vi.fn().mockResolvedValue(null),
   switchProfile: vi.fn().mockResolvedValue({ persisted: true, mechanism: 'setx' }),
