@@ -99,14 +99,21 @@ export async function launchTerminalWithProfile(name: string): Promise<void> {
  */
 export async function launchTerminalWithCommand(commandLine: string): Promise<void> {
   if (process.platform === 'win32') {
-    // PowerShell via Windows Terminal first, then standalone PowerShell 7
-    // (pwsh), then Windows PowerShell 5.1 (powershell.exe) as last resort.
-    // -NoExit keeps the shell open after the command finishes.
+    // Use -EncodedCommand (base64 UTF-16LE) so that wt.exe cannot misparse
+    // the command string — it splits on raw `;` as a tab separator, which
+    // breaks PowerShell multi-statement commands passed via -Command.
+    //
+    // Use powershell.exe (Windows PowerShell 5.1) instead of pwsh (PowerShell
+    // 7+) because pwsh is a separate install and isn't guaranteed to exist.
+    // Note: wt.exe spawn always "succeeds" from our perspective even if the
+    // inner shell is missing — the error shows up inside the terminal window.
+    // So we can't fall back on a missing inner shell; we have to pick one
+    // that's guaranteed to be installed.
+    const encoded = Buffer.from(commandLine, 'utf16le').toString('base64')
     await tryLaunchSequence(
       [
-        { cmd: 'wt.exe', args: ['pwsh', '-NoExit', '-Command', commandLine] },
-        { cmd: 'pwsh', args: ['-NoExit', '-Command', commandLine] },
-        { cmd: 'powershell.exe', args: ['-NoExit', '-Command', commandLine] }
+        { cmd: 'wt.exe', args: ['powershell.exe', '-NoExit', '-EncodedCommand', encoded] },
+        { cmd: 'powershell.exe', args: ['-NoExit', '-EncodedCommand', encoded] }
       ],
       {}
     )
