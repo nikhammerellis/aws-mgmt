@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
 import {
   readAwsConfig,
   readSsoSessions,
@@ -242,6 +242,8 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('get-profile-expiries', () => getProfileExpiries())
+
+  ipcMain.handle('get-app-version', () => app.getVersion())
 
   // --- SAML Profiles ---
 
