@@ -49,6 +49,10 @@ function createWindow(): void {
 
 const getWindow = () => mainWindow
 
+// Suppress noisy Chromium GPU shader cache errors on Windows. This app is a
+// utility rendering forms — GPU shader caching provides no benefit.
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache')
+
 let trayRefreshHandle: ReturnType<typeof setInterval> | null = null
 
 app.whenReady().then(() => {
