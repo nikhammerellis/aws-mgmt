@@ -168,6 +168,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
 }
 
 .profile-card-name {
@@ -176,6 +178,15 @@ body {
   gap: 8px;
   font-size: 14px;
   font-weight: 500;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.profile-card-name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .profile-card-meta {
@@ -318,6 +329,14 @@ body {
   font-size: 13px;
   text-align: left;
   cursor: pointer;
+}
+
+.command-palette-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .command-palette-item.focused {
@@ -770,16 +789,23 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-bottom: 20px;
 }
 
 .detail-header h2 {
-  margin-bottom: 0;
+  margin: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+  word-break: break-word;
 }
 
 .detail-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 /* Buttons */
@@ -790,6 +816,10 @@ body {
   cursor: pointer;
   border: 1px solid var(--border);
   transition: background 0.15s, color 0.15s;
+  /* Buttons are fixed content; never let labels wrap or the button shrink
+     below its content width inside a flex row. */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .btn-sm {
@@ -1336,6 +1366,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-bottom: 16px;
 }
 
@@ -1370,11 +1402,18 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
 }
 
 .saml-card-name {
   font-size: 14px;
   font-weight: 500;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .saml-card-actions {

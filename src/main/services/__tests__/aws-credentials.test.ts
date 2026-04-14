@@ -57,7 +57,7 @@ describe('readAwsCredentials', () => {
 })
 
 describe('writeAwsCredential', () => {
-  it('adds new credentials entry', async () => {
+  it('adds new credentials entry with 0o600 mode', async () => {
     mockReadIni.mockResolvedValue({
       'default': { aws_access_key_id: 'AKIA_OLD' }
     })
@@ -71,10 +71,11 @@ describe('writeAwsCredential', () => {
 
     expect(mockWriteIni).toHaveBeenCalledWith(
       '/home/test/.aws/credentials',
-      {
+      expect.objectContaining({
         'default': { aws_access_key_id: 'AKIA_OLD' },
         'dev': { aws_access_key_id: 'AKIA_NEW', aws_secret_access_key: 'secret_new' }
-      }
+      }),
+      { mode: 0o600 }
     )
   })
 
@@ -93,6 +94,50 @@ describe('writeAwsCredential', () => {
     const writtenData = mockWriteIni.mock.calls[0][1]
     expect(writtenData['dev'].aws_access_key_id).toBe('AKIA_NEW')
   })
+
+  it('preserves unknown keys (e.g. saml2aws x_security_token_expires)', async () => {
+    mockReadIni.mockResolvedValue({
+      'dev': {
+        aws_access_key_id: 'AKIA_OLD',
+        aws_secret_access_key: 'old_secret',
+        x_security_token_expires: '2026-04-13T22:00:00Z',
+        x_principal_arn: 'arn:aws:sts::123:assumed-role/X/Y'
+      }
+    })
+    mockWriteIni.mockResolvedValue(undefined)
+
+    await writeAwsCredential({
+      name: 'dev',
+      aws_access_key_id: 'AKIA_NEW',
+      aws_secret_access_key: 'new_secret'
+    })
+
+    const writtenData = mockWriteIni.mock.calls[0][1]
+    expect(writtenData['dev'].aws_access_key_id).toBe('AKIA_NEW')
+    expect(writtenData['dev'].x_security_token_expires).toBe('2026-04-13T22:00:00Z')
+    expect(writtenData['dev'].x_principal_arn).toBe('arn:aws:sts::123:assumed-role/X/Y')
+  })
+
+  it('clears a managed key when the UI sends an empty value', async () => {
+    mockReadIni.mockResolvedValue({
+      'dev': {
+        aws_access_key_id: 'AKIA_OLD',
+        aws_secret_access_key: 'old_secret',
+        aws_session_token: 'stale_token'
+      }
+    })
+    mockWriteIni.mockResolvedValue(undefined)
+
+    await writeAwsCredential({
+      name: 'dev',
+      aws_access_key_id: 'AKIA_NEW',
+      aws_secret_access_key: 'new_secret'
+      // aws_session_token omitted → should be cleared
+    })
+
+    const writtenData = mockWriteIni.mock.calls[0][1]
+    expect(writtenData['dev'].aws_session_token).toBeUndefined()
+  })
 })
 
 describe('deleteAwsCredential', () => {
@@ -107,7 +152,8 @@ describe('deleteAwsCredential', () => {
 
     expect(mockWriteIni).toHaveBeenCalledWith(
       '/home/test/.aws/credentials',
-      { 'default': { aws_access_key_id: 'AKIA_DEFAULT' } }
+      { 'default': { aws_access_key_id: 'AKIA_DEFAULT' } },
+      { mode: 0o600 }
     )
   })
 })

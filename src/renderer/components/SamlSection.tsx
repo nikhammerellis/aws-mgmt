@@ -89,7 +89,7 @@ export function SamlSection({
                 onClick={() => onSelect(profile.name)}
               >
                 <div className="saml-card-header">
-                  <span className="saml-card-name">{profile.name}</span>
+                  <span className="saml-card-name" title={profile.name}>{profile.name}</span>
                   <div className="saml-card-actions">
                     <button className="btn-icon" onClick={(e) => { e.stopPropagation(); handleEdit(profile) }} title="Edit">
                       Edit

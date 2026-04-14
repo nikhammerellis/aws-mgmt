@@ -10,7 +10,8 @@ import {
   detectShellHint,
   launchTerminalWithProfile,
   launchLoginInTerminal,
-  exportLineTemplateFor
+  exportLineTemplateFor,
+  escapeAppleScriptString
 } from '../terminal-launcher'
 
 const mockSpawn = vi.mocked(spawn)
@@ -94,6 +95,40 @@ describe('detectShellHint', () => {
   })
 })
 
+describe('escapeAppleScriptString', () => {
+  it('escapes backslashes before double-quotes (order matters)', () => {
+    expect(escapeAppleScriptString('a\\b')).toBe('a\\\\b')
+    expect(escapeAppleScriptString('a"b')).toBe('a\\"b')
+  })
+
+  it('handles mixed payloads without corrupting them', () => {
+    expect(escapeAppleScriptString('say "hi" \\ done')).toBe('say \\"hi\\" \\\\ done')
+  })
+
+  it('is a no-op for strings without special characters', () => {
+    expect(escapeAppleScriptString('aws sso login --profile dev')).toBe(
+      'aws sso login --profile dev'
+    )
+  })
+
+  it('prevents injection: every quote in the payload is backslash-escaped', () => {
+    const hostile = 'dev" & (do shell script "calc") & "'
+    const escaped = escapeAppleScriptString(hostile)
+    // Safety property: every `"` in the output must be immediately preceded
+    // by a `\`, so when wrapped in "..." no `"` can terminate the outer
+    // AppleScript string literal.
+    for (let i = 0; i < escaped.length; i++) {
+      if (escaped[i] === '"') {
+        expect(escaped[i - 1]).toBe('\\')
+      }
+    }
+    // The hostile payload had 3 raw quotes; all should be escaped.
+    const rawQuoteCount = (hostile.match(/"/g) ?? []).length
+    const escapedQuoteCount = (escaped.match(/\\"/g) ?? []).length
+    expect(escapedQuoteCount).toBe(rawQuoteCount)
+  })
+})
+
 describe('launchTerminalWithProfile', () => {
   it('rejects names with invalid characters', async () => {
     setPlatform('linux')
@@ -112,6 +147,13 @@ describe('launchTerminalWithProfile', () => {
     expect((args as string[])[0]).toBe('powershell.exe')
     const decoded = decodeEncodedCommand(args as string[])
     expect(decoded).toContain("$env:AWS_PROFILE = 'dev'")
+    // Clears stale AWS override vars before setting AWS_PROFILE
+    expect(decoded).toContain('Remove-Item Env:AWS_ACCESS_KEY_ID')
+    expect(decoded).toContain('Remove-Item Env:AWS_SECRET_ACCESS_KEY')
+    expect(decoded).toContain('Remove-Item Env:AWS_SESSION_TOKEN')
+    expect(decoded.indexOf('Remove-Item Env:AWS_ACCESS_KEY_ID')).toBeLessThan(
+      decoded.indexOf("$env:AWS_PROFILE = 'dev'")
+    )
   })
 
   it('falls back to standalone pwsh when wt.exe is not available', async () => {
@@ -140,7 +182,13 @@ describe('launchTerminalWithProfile', () => {
 
     const [cmd, args] = mockSpawn.mock.calls[0]
     expect(cmd).toBe('osascript')
-    expect((args as string[])[1]).toContain('export AWS_PROFILE=dev')
+    const script = (args as string[])[1]
+    expect(script).toContain('export AWS_PROFILE=dev')
+    // Clears stale AWS override vars before export
+    expect(script).toContain('unset AWS_ACCESS_KEY_ID')
+    expect(script.indexOf('unset AWS_ACCESS_KEY_ID')).toBeLessThan(
+      script.indexOf('export AWS_PROFILE=dev')
+    )
   })
 
   it('embeds an export command on Linux', async () => {
@@ -150,7 +198,14 @@ describe('launchTerminalWithProfile', () => {
     await launchTerminalWithProfile('dev')
 
     const [, args] = mockSpawn.mock.calls[0]
-    expect((args as string[]).join(' ')).toContain('export AWS_PROFILE=dev')
+    const joined = (args as string[]).join(' ')
+    expect(joined).toContain('export AWS_PROFILE=dev')
+    // Clears stale AWS override vars before export
+    expect(joined).toContain('unset AWS_ACCESS_KEY_ID')
+    expect(joined).toContain('AWS_SECRET_ACCESS_KEY')
+    expect(joined.indexOf('unset AWS_ACCESS_KEY_ID')).toBeLessThan(
+      joined.indexOf('export AWS_PROFILE=dev')
+    )
   })
 })
 

@@ -80,7 +80,8 @@ describe('writeSamlProfile', () => {
           provider: 'Okta',
           username: 'user@test.com'
         }
-      }
+      },
+      { mode: 0o600 }
     )
   })
 
@@ -96,6 +97,31 @@ describe('writeSamlProfile', () => {
     expect(writtenData['existing']).toBeDefined()
     expect(writtenData['new-profile']).toBeDefined()
   })
+
+  it('preserves unknown keys on edit (e.g. disable_keychain, target_url)', async () => {
+    mockReadIni.mockResolvedValue({
+      'corp': {
+        provider: 'Okta',
+        username: 'old@corp.com',
+        disable_keychain: 'true',
+        target_url: 'https://target.example.com',
+        http_attempts_count: '3'
+      }
+    })
+    mockWriteIni.mockResolvedValue(undefined)
+
+    await writeSamlProfile({
+      name: 'corp',
+      provider: 'Okta',
+      username: 'new@corp.com'
+    })
+
+    const written = mockWriteIni.mock.calls[0][1]['corp']
+    expect(written.username).toBe('new@corp.com')
+    expect(written.disable_keychain).toBe('true')
+    expect(written.target_url).toBe('https://target.example.com')
+    expect(written.http_attempts_count).toBe('3')
+  })
 })
 
 describe('deleteSamlProfile', () => {
@@ -110,7 +136,8 @@ describe('deleteSamlProfile', () => {
 
     expect(mockWriteIni).toHaveBeenCalledWith(
       '/home/test/.saml2aws',
-      { 'keep': { provider: 'Okta' } }
+      { 'keep': { provider: 'Okta' } },
+      { mode: 0o600 }
     )
   })
 })

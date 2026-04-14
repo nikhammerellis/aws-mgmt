@@ -5,7 +5,7 @@ import { vi } from 'vitest'
 const mockApi = {
   getProfiles: vi.fn().mockResolvedValue([]),
   getActiveProfile: vi.fn().mockResolvedValue(null),
-  switchProfile: vi.fn().mockResolvedValue(undefined),
+  switchProfile: vi.fn().mockResolvedValue({ persisted: true, mechanism: 'setx' }),
   addProfile: vi.fn().mockResolvedValue(undefined),
   updateProfile: vi.fn().mockResolvedValue(undefined),
   deleteProfile: vi.fn().mockResolvedValue(undefined),
@@ -31,12 +31,15 @@ const mockApi = {
   launchLogin: vi.fn().mockResolvedValue(undefined),
   testProfile: vi.fn().mockResolvedValue({ ok: false, error: 'mock' }),
   getProfileExpiries: vi.fn().mockResolvedValue([]),
+  trackPendingLogin: vi.fn().mockResolvedValue(undefined),
   getSamlProfiles: vi.fn().mockResolvedValue([]),
   addSamlProfile: vi.fn().mockResolvedValue(undefined),
   updateSamlProfile: vi.fn().mockResolvedValue(undefined),
   deleteSamlProfile: vi.fn().mockResolvedValue(undefined),
   onProfilesChanged: vi.fn().mockReturnValue(() => {}),
-  onSamlChanged: vi.fn().mockReturnValue(() => {})
+  onSamlChanged: vi.fn().mockReturnValue(() => {}),
+  onLoginVerified: vi.fn().mockReturnValue(() => {}),
+  onExpiriesChanged: vi.fn().mockReturnValue(() => {})
 }
 
 Object.defineProperty(window, 'api', {

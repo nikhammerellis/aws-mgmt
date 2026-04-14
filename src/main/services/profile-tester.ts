@@ -1,8 +1,8 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import { isValidProfileName, stripAwsOverrides } from '../../shared/validation'
 
 const execFileAsync = promisify(execFile)
-const NAME_PATTERN = /^[A-Za-z0-9_\-]+$/
 
 export interface ProfileTestSuccess {
   ok: true
@@ -62,15 +62,18 @@ function classifyError(stderr: string, code: string | undefined): ProfileTestFai
 }
 
 export async function testProfile(name: string): Promise<ProfileTestResult> {
-  if (!NAME_PATTERN.test(name)) {
+  if (!isValidProfileName(name)) {
     return { ok: false, error: 'Invalid profile name' }
   }
 
   try {
+    // Strip AWS_* env vars from the subprocess so `--profile name` actually
+    // uses that profile, rather than silently being overridden by whatever
+    // AWS_ACCESS_KEY_ID / AWS_PROFILE the app inherited from its launcher.
     const { stdout } = await execFileAsync(
       'aws',
       ['sts', 'get-caller-identity', '--profile', name, '--output', 'json'],
-      { timeout: 15000 }
+      { timeout: 15000, env: stripAwsOverrides(process.env) }
     )
     const parsed = JSON.parse(stdout) as CallerIdentity
     return {

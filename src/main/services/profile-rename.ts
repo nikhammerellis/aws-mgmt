@@ -11,11 +11,12 @@ import { readAwsConfig } from './aws-config'
 import { readSamlConfig } from './saml-config'
 import { getActiveProfile, switchProfile } from './profile-switcher'
 import { setWriteLock } from './file-watcher'
+import { PROFILE_NAME_PATTERN } from '../../shared/validation'
 import type { RenameImpact, RenameOptions } from '../../renderer/types'
 
 export type { RenameImpact, RenameOptions }
 
-const NAME_PATTERN = /^[A-Za-z0-9_\-]+$/
+const NAME_PATTERN = PROFILE_NAME_PATTERN
 const CLI_CACHE_DIR = join(homedir(), '.aws', 'cli', 'cache')
 
 function profileSection(name: string): string {

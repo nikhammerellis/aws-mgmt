@@ -117,6 +117,17 @@ export default function App() {
     return () => clearTimeout(handle)
   }, [toast])
 
+  // Surface login verification results as toasts once the file watcher
+  // detects the credentials file has been updated post-login.
+  useEffect(() => {
+    const unsubscribe = window.api.onLoginVerified(({ profileName, result }) => {
+      if (result.ok) {
+        setToast(`✓ ${profileName} logged in as ${result.arn || 'unknown ARN'}`)
+      }
+    })
+    return unsubscribe
+  }, [])
+
   const handleAdd = () => {
     setWizardProfile(null)
     setWizardMode('add')
@@ -169,9 +180,23 @@ export default function App() {
     }
   }
 
+  const handleSwitch = async (name: string) => {
+    const result = await switchProfile(name)
+    // On Linux there is no cross-shell persistence mechanism — surface that
+    // fact so users don't assume new terminals will pick up the profile.
+    if (result && !result.persisted && result.note) {
+      setToast(result.note)
+    }
+  }
+
   const handleLogin = async (payload: LaunchLoginPayload) => {
     try {
       await window.api.launchLogin(payload)
+      // Track the pending login so the file watcher will run an STS probe
+      // once the credentials file updates and we can confirm success.
+      window.api.trackPendingLogin(payload.profileName).catch(() => {
+        /* non-fatal — verification is best-effort */
+      })
       const detail =
         payload.kind === 'sso'
           ? `aws sso login --profile ${payload.profileName}`
@@ -226,7 +251,7 @@ export default function App() {
           label: `Switch to ${p.name}`,
           hint: p.region ?? '',
           group: 'Switch profile',
-          run: () => switchProfile(p.name)
+          run: () => handleSwitch(p.name)
         })
       }
       const sources = samlSourcesByAws.get(p.name) ?? []
@@ -279,7 +304,7 @@ export default function App() {
       })
     }
     return actions
-  }, [profiles, shellHint, switchProfile, samlSourcesByAws])
+  }, [profiles, shellHint, samlSourcesByAws])
 
   // Global hotkeys
   useEffect(() => {
@@ -356,7 +381,7 @@ export default function App() {
             shellHint={shellHint}
             expiries={expiries}
             onSelect={(p) => setSelectedName(p.name)}
-            onSwitch={switchProfile}
+            onSwitch={handleSwitch}
             onAdd={handleAdd}
             onRename={(p) => setRenamingName(p.name)}
             onDelete={(name) => setDeletingName(name)}

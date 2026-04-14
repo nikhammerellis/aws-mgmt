@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs'
 import { join } from 'path'
-import { readAwsConfig } from './aws-config'
+import { readAwsConfig, readSsoSessions } from './aws-config'
 import { readIniFile } from '../utils/ini-helpers'
 import { getAwsCredentialsPath, getSsoCacheDir } from '../utils/paths'
 import type { ProfileExpiry } from '../../renderer/types'
@@ -29,8 +29,12 @@ async function readSsoCacheByStartUrl(): Promise<Map<string, string>> {
           const raw = await fs.readFile(join(getSsoCacheDir(), file), 'utf-8')
           const parsed = JSON.parse(raw) as SsoCacheEntry
           if (parsed.startUrl && parsed.expiresAt) {
-            // Latest write wins; we don't currently dedupe by timestamp.
-            byUrl.set(parsed.startUrl, parsed.expiresAt)
+            // Keep the entry with the furthest expiry rather than last-read —
+            // the SSO cache dir often contains stale files from prior logins.
+            const prev = byUrl.get(parsed.startUrl)
+            if (!prev || new Date(parsed.expiresAt).getTime() > new Date(prev).getTime()) {
+              byUrl.set(parsed.startUrl, parsed.expiresAt)
+            }
           }
         } catch {
           // ignore unreadable/malformed cache entries
@@ -58,18 +62,29 @@ async function readSamlExpiries(): Promise<Map<string, string>> {
 }
 
 export async function getProfileExpiries(): Promise<ProfileExpiry[]> {
-  const [awsConfig, ssoByUrl, samlByName] = await Promise.all([
+  const [awsConfig, ssoSessions, ssoByUrl, samlByName] = await Promise.all([
     readAwsConfig(),
+    readSsoSessions(),
     readSsoCacheByStartUrl(),
     readSamlExpiries()
   ])
 
+  const sessionStartUrlByName = new Map(
+    ssoSessions
+      .filter((s) => !!s.sso_start_url)
+      .map((s) => [s.name, s.sso_start_url as string])
+  )
+
   const results: ProfileExpiry[] = []
 
   for (const profile of awsConfig) {
-    // SSO: legacy inline sso_start_url matches a cache entry
-    if (profile.sso_start_url) {
-      const expiresAt = ssoByUrl.get(profile.sso_start_url)
+    // SSO: resolve start URL either from the inline sso_start_url field or
+    // from a referenced top-level [sso-session NAME] block (modern CLI v2).
+    const startUrl =
+      profile.sso_start_url ??
+      (profile.sso_session ? sessionStartUrlByName.get(profile.sso_session) : undefined)
+    if (startUrl) {
+      const expiresAt = ssoByUrl.get(startUrl)
       if (expiresAt) {
         results.push({ profileName: profile.name, expiresAt, source: 'sso' })
         continue

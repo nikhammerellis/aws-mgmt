@@ -1,5 +1,10 @@
 import { ipcMain } from 'electron'
-import { readAwsConfig, writeAwsConfigProfile, deleteAwsConfigProfile } from './services/aws-config'
+import {
+  readAwsConfig,
+  readSsoSessions,
+  writeAwsConfigProfile,
+  deleteAwsConfigProfile
+} from './services/aws-config'
 import { readAwsCredentials, writeAwsCredential, deleteAwsCredential } from './services/aws-credentials'
 import { readSamlConfig, writeSamlProfile, deleteSamlProfile } from './services/saml-config'
 import { getActiveProfile, switchProfile } from './services/profile-switcher'
@@ -13,7 +18,48 @@ import {
 } from './services/terminal-launcher'
 import { testProfile } from './services/profile-tester'
 import { getProfileExpiries } from './services/expiry-tracker'
-import type { AwsProfile, NewProfileData, RenameOptions, SamlProfile } from '../renderer/types'
+import { trackPendingLogin } from './services/login-verifier'
+import { assertValidProfileName } from '../shared/validation'
+import type { AwsProfile, NewProfileData, RenameOptions, SamlProfile, SwitchResult } from '../renderer/types'
+
+/**
+ * Sanity-check every string field of an incoming profile payload that
+ * would otherwise be written verbatim into an INI file. Rejects values
+ * that could cause INI section injection (newlines, `[`, `]`, `=`).
+ *
+ * Values that the UI never touches (unknown keys preserved from disk)
+ * do not pass through here — they come from files the user already owns.
+ */
+const INI_INJECTION_RE = /[\r\n\[\]=]/
+
+export function assertSafeIniValue(value: unknown, label: string): void {
+  if (value === undefined || value === null) return
+  if (typeof value !== 'string') {
+    throw new Error(`Invalid ${label}: must be a string`)
+  }
+  if (INI_INJECTION_RE.test(value)) {
+    throw new Error(`Invalid ${label}: contains control characters`)
+  }
+}
+
+export function validateProfileData(data: NewProfileData): void {
+  assertValidProfileName(data.name)
+  for (const [key, value] of Object.entries(data)) {
+    if (key === 'name') continue
+    assertSafeIniValue(value, `profile field "${key}"`)
+  }
+}
+
+export function validateSamlProfile(data: SamlProfile): void {
+  assertValidProfileName(data.name, 'SAML profile name')
+  if (data.awsProfile !== undefined && data.awsProfile !== '') {
+    assertValidProfileName(data.awsProfile, 'SAML aws_profile target')
+  }
+  for (const [key, value] of Object.entries(data)) {
+    if (key === 'name' || key === 'skipVerify') continue
+    assertSafeIniValue(value, `SAML field "${key}"`)
+  }
+}
 
 let onProfilesUpdated: (() => void) | null = null
 
@@ -25,13 +71,15 @@ export function registerIpcHandlers(): void {
   // --- AWS Profiles ---
 
   ipcMain.handle('get-profiles', async (): Promise<AwsProfile[]> => {
-    const [configProfiles, credentials, activeProfile] = await Promise.all([
+    const [configProfiles, ssoSessions, credentials, activeProfile] = await Promise.all([
       readAwsConfig(),
+      readSsoSessions(),
       readAwsCredentials(),
       getActiveProfile()
     ])
 
     const credMap = new Map(credentials.map((c) => [c.name, c]))
+    const sessionMap = new Map(ssoSessions.map((s) => [s.name, s]))
     const allNames = new Set([
       ...configProfiles.map((p) => p.name),
       ...credentials.map((c) => c.name)
@@ -42,6 +90,7 @@ export function registerIpcHandlers(): void {
     for (const name of allNames) {
       const config = configProfiles.find((p) => p.name === name)
       const cred = credMap.get(name)
+      const session = config?.sso_session ? sessionMap.get(config.sso_session) : undefined
 
       profiles.push({
         name,
@@ -55,6 +104,9 @@ export function registerIpcHandlers(): void {
         ssoRegion: config?.sso_region,
         ssoAccountId: config?.sso_account_id,
         ssoRoleName: config?.sso_role_name,
+        ssoSession: config?.sso_session,
+        ssoSessionStartUrl: session?.sso_start_url,
+        ssoSessionRegion: session?.sso_region,
         hasCredentials: !!(cred?.aws_access_key_id),
         accessKeyId: cred?.aws_access_key_id,
         secretAccessKey: cred?.aws_secret_access_key,
@@ -77,12 +129,15 @@ export function registerIpcHandlers(): void {
     return getActiveProfile()
   })
 
-  ipcMain.handle('switch-profile', async (_event, name: string): Promise<void> => {
-    await switchProfile(name)
+  ipcMain.handle('switch-profile', async (_event, name: string): Promise<SwitchResult> => {
+    assertValidProfileName(name)
+    const result = await switchProfile(name)
     onProfilesUpdated?.()
+    return result
   })
 
   ipcMain.handle('add-profile', async (_event, data: NewProfileData): Promise<void> => {
+    validateProfileData(data)
     setWriteLock()
     await writeAwsConfigProfile({
       name: data.name,
@@ -107,6 +162,8 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('update-profile', async (_event, name: string, data: NewProfileData): Promise<void> => {
+    assertValidProfileName(name)
+    validateProfileData({ ...data, name })
     setWriteLock()
     await writeAwsConfigProfile({
       name,
@@ -120,23 +177,30 @@ export function registerIpcHandlers(): void {
       sso_account_id: data.ssoAccountId,
       sso_role_name: data.ssoRoleName
     })
-    if (data.accessKeyId || data.secretAccessKey) {
-      await writeAwsCredential({
-        name,
-        aws_access_key_id: data.accessKeyId,
-        aws_secret_access_key: data.secretAccessKey,
-        aws_session_token: data.sessionToken
-      })
-    }
+    // Always call writeAwsCredential so the merge semantics can CLEAR stale
+    // IAM keys when the user converts a profile to SSO/SAML/assume-role.
+    // Unknown keys like saml2aws's x_security_token_expires are preserved
+    // by the merge; managed keys set to undefined are removed.
+    await writeAwsCredential({
+      name,
+      aws_access_key_id: data.accessKeyId,
+      aws_secret_access_key: data.secretAccessKey,
+      aws_session_token: data.sessionToken
+    })
   })
 
   ipcMain.handle('delete-profile', async (_event, name: string): Promise<void> => {
+    assertValidProfileName(name)
     setWriteLock()
     await deleteAwsConfigProfile(name)
     await deleteAwsCredential(name)
   })
 
   ipcMain.handle('get-rename-impact', async (_event, oldName: string, newName: string) => {
+    // getRenameImpact itself validates newName via its validation-error field;
+    // we still reject obviously-bad oldName here to avoid a malicious renderer
+    // passing `"default]\n[profile x"` and causing spurious reads.
+    assertValidProfileName(oldName, 'old profile name')
     return getRenameImpact(oldName, newName)
   })
 
@@ -146,6 +210,8 @@ export function registerIpcHandlers(): void {
     newName: string,
     options: RenameOptions
   ): Promise<void> => {
+    assertValidProfileName(oldName, 'old profile name')
+    assertValidProfileName(newName, 'new profile name')
     await renameProfile(oldName, newName, options)
     onProfilesUpdated?.()
   })
@@ -153,14 +219,25 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('get-shell-hint', () => detectShellHint())
 
   ipcMain.handle('launch-terminal', async (_event, name: string): Promise<void> => {
+    assertValidProfileName(name)
     await launchTerminalWithProfile(name)
   })
 
   ipcMain.handle('launch-login', async (_event, payload: LaunchLoginPayload): Promise<void> => {
+    assertValidProfileName(payload?.profileName)
+    if (payload?.kind === 'saml-target') {
+      assertValidProfileName(payload.samlSection, 'saml2aws section')
+    }
     await launchLoginInTerminal(payload)
   })
 
+  ipcMain.handle('track-pending-login', async (_event, profileName: string): Promise<void> => {
+    assertValidProfileName(profileName)
+    trackPendingLogin(profileName)
+  })
+
   ipcMain.handle('test-profile', async (_event, name: string) => {
+    assertValidProfileName(name)
     return testProfile(name)
   })
 
@@ -186,11 +263,14 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('add-saml-profile', async (_event, data: SamlProfile): Promise<void> => {
+    validateSamlProfile(data)
     setWriteLock()
     await writeSamlProfile(samlProfileToEntry(data))
   })
 
   ipcMain.handle('update-saml-profile', async (_event, name: string, data: SamlProfile): Promise<void> => {
+    assertValidProfileName(name, 'SAML profile name')
+    validateSamlProfile(data)
     setWriteLock()
     // If name changed, delete old first
     if (data.name !== name) {
@@ -200,6 +280,7 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('delete-saml-profile', async (_event, name: string): Promise<void> => {
+    assertValidProfileName(name, 'SAML profile name')
     setWriteLock()
     await deleteSamlProfile(name)
   })
