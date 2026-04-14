@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { AwsProfile, NewProfileData, ProfileKind } from '../types'
 import { AWS_REGIONS, OUTPUT_FORMATS } from '../lib/aws-regions'
+import { PROFILE_NAME_PATTERN } from '../../shared/validation'
 
 type WizardMode = 'add' | 'edit' | 'clone'
 
@@ -43,13 +44,15 @@ const KIND_META: KindMeta[] = [
 
 function detectKind(profile: AwsProfile | null | undefined): ProfileKind {
   if (!profile) return 'iam-keys'
-  if (profile.ssoStartUrl) return 'sso'
+  // Inline SSO (sso_start_url on the profile) OR modern SSO via a shared
+  // sso-session block both qualify as an SSO-kind profile.
+  if (profile.ssoStartUrl || profile.ssoSession) return 'sso'
   if (profile.roleArn || profile.sourceProfile) return 'assume-role'
   if (profile.accessKeyId) return 'iam-keys'
   return 'saml-target'
 }
 
-const NAME_PATTERN = /^[A-Za-z0-9_\-]+$/
+const NAME_PATTERN = PROFILE_NAME_PATTERN
 
 interface FormState {
   name: string
@@ -188,7 +191,7 @@ function validate(
 
   if (!trimmedName) errors.push('Profile name is required.')
   else if (!NAME_PATTERN.test(trimmedName)) {
-    errors.push('Profile name may contain only letters, digits, underscores, and hyphens.')
+    errors.push('Profile name may contain only letters, digits, and the characters _ . - @ +.')
   } else if (mode === 'clone' && trimmedName === originalName) {
     errors.push('Clone must use a different name than the original.')
   } else if (mode !== 'edit' && existingNames.includes(trimmedName)) {

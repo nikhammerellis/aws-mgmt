@@ -108,7 +108,7 @@ export function ProfileCard({
       <div className="profile-card-header">
         <div className="profile-card-name">
           {profile.isActive && <ActiveBadge />}
-          <span>{profile.name}</span>
+          <span title={profile.name}>{profile.name}</span>
         </div>
         <div className="action-split-button" ref={menuRef}>
           {!profile.isActive && (

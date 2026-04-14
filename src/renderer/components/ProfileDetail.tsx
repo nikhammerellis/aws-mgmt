@@ -90,7 +90,7 @@ export function ProfileDetail({
               disabled={!loginAction.enabled}
               title={loginAction.hint || loginAction.label}
             >
-              {loginAction.enabled ? 'Login' : 'Login (n/a)'}
+              Login
             </button>
           )}
           <button

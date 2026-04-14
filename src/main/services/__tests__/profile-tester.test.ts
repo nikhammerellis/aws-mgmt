@@ -44,6 +44,40 @@ describe('testProfile', () => {
     expect(mockImpl).not.toHaveBeenCalled()
   })
 
+  it('accepts AWS-valid chars like dot and at-sign', async () => {
+    mockImpl.mockResolvedValueOnce({
+      stdout: JSON.stringify({ Account: '1', Arn: 'arn:aws:iam::1:user/x', UserId: 'U' }),
+      stderr: ''
+    })
+    const result = await testProfile('dev.staging@prod')
+    expect(result.ok).toBe(true)
+    expect(mockImpl).toHaveBeenCalled()
+  })
+
+  it('strips AWS_* env vars from the subprocess so --profile is respected', async () => {
+    const originalEnv = { ...process.env }
+    process.env.AWS_ACCESS_KEY_ID = 'AKIALEAK'
+    process.env.AWS_PROFILE = 'stale-profile'
+    process.env.AWS_CONFIG_FILE = '/tmp/evil'
+
+    mockImpl.mockResolvedValueOnce({
+      stdout: JSON.stringify({ Account: '1', Arn: 'arn:aws:iam::1:user/x', UserId: 'U' }),
+      stderr: ''
+    })
+
+    await testProfile('dev')
+
+    // Second arg to the promisified execFile is the options object.
+    const callArgs = mockImpl.mock.calls[0]
+    const options = callArgs[callArgs.length - 1] as { env?: NodeJS.ProcessEnv }
+    expect(options.env).toBeDefined()
+    expect(options.env!.AWS_ACCESS_KEY_ID).toBeUndefined()
+    expect(options.env!.AWS_PROFILE).toBeUndefined()
+    expect(options.env!.AWS_CONFIG_FILE).toBeUndefined()
+
+    process.env = originalEnv
+  })
+
   it('classifies AWS CLI missing as ENOENT with install hint', async () => {
     mockImpl.mockRejectedValueOnce(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
 

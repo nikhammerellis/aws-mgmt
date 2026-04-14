@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { AwsProfile, NewProfileData, RenameImpact, RenameOptions } from '../types'
+import type { AwsProfile, NewProfileData, RenameImpact, RenameOptions, SwitchResult } from '../types'
 
 export function useProfiles() {
   const [profiles, setProfiles] = useState<AwsProfile[]>([])
@@ -19,12 +19,14 @@ export function useProfiles() {
     }
   }, [])
 
-  const switchProfile = useCallback(async (name: string) => {
+  const switchProfile = useCallback(async (name: string): Promise<SwitchResult | null> => {
     try {
-      await window.api.switchProfile(name)
+      const result = await window.api.switchProfile(name)
       await refresh()
+      return result
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to switch profile')
+      return null
     }
   }, [refresh])
 

@@ -1,5 +1,8 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import type { SwitchResult } from '../../renderer/types'
+
+export type { SwitchResult }
 
 const execFileAsync = promisify(execFile)
 
@@ -31,19 +34,36 @@ export async function getActiveProfile(): Promise<string | null> {
   return null
 }
 
-export async function switchProfile(name: string): Promise<void> {
+export async function switchProfile(name: string): Promise<SwitchResult> {
+  let result: SwitchResult
+
   if (process.platform === 'win32') {
     // setx writes to HKCU\Environment — all new terminals inherit it
     await execFileAsync('setx', ['AWS_PROFILE', name])
+    result = { persisted: true, mechanism: 'setx' }
   } else if (process.platform === 'darwin') {
     // launchctl setenv makes it available to all new processes
     await execFileAsync('launchctl', ['setenv', 'AWS_PROFILE', name])
+    result = { persisted: true, mechanism: 'launchctl' }
   } else {
-    // Linux fallback — just set process env for now
+    // Linux has no cross-shell equivalent — the per-session env is owned
+    // by the user's shell rc files. Updating our own process env is the
+    // most we can do; surface that fact to the renderer instead of
+    // silently pretending the switch persisted.
+    result = {
+      persisted: false,
+      mechanism: 'process-only',
+      note:
+        'AWS_PROFILE set for this app only. ' +
+        'On Linux, add `export AWS_PROFILE=<name>` to your shell rc to persist across terminals.'
+    }
   }
 
-  // Also update our own process env so the app state is consistent
+  // Always update our own process env so internal state (tray, active
+  // badge) stays consistent with what the user picked.
   process.env.AWS_PROFILE = name
+
+  return result
 }
 
 export async function clearActiveProfile(): Promise<void> {

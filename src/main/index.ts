@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { registerIpcHandlers, setOnProfilesUpdated } from './ipc-handlers'
-import { startFileWatchers, stopFileWatchers } from './services/file-watcher'
+import { startFileWatchers, stopFileWatchers, broadcastExpiriesChanged } from './services/file-watcher'
 import { createTray, updateTrayMenu, destroyTray } from './services/tray'
 
 let mainWindow: BrowserWindow | null = null
@@ -19,13 +19,25 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false
+      // Sandbox the renderer process at the OS level. Our preload uses
+      // only contextBridge + ipcRenderer, both of which work under sandbox,
+      // so we get defense-in-depth against a compromised renderer without
+      // losing any functionality.
+      sandbox: true
     }
   })
 
   // Show window once ready to avoid flash
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show()
+  })
+
+  // Harden against a compromised renderer trying to navigate the window
+  // away from the bundled UI, or to pop a window.open() to an attacker URL.
+  // This app is fully local — no remote navigation is ever legitimate.
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  mainWindow.webContents.on('will-navigate', (event) => {
+    event.preventDefault()
   })
 
   // Close-to-tray: hide window instead of destroying it
@@ -53,6 +65,22 @@ const getWindow = () => mainWindow
 // utility rendering forms — GPU shader caching provides no benefit.
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache')
 
+// Only allow one running instance. A second launch focuses the existing
+// window instead of spawning a duplicate — otherwise two copies would both
+// watch ~/.aws/, both own a tray icon, and both race on file writes.
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      if (!mainWindow.isVisible()) mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+}
+
 let trayRefreshHandle: ReturnType<typeof setInterval> | null = null
 
 app.whenReady().then(() => {
@@ -64,11 +92,15 @@ app.whenReady().then(() => {
   // Keep tray menu in sync when profiles are changed via the UI
   setOnProfilesUpdated(() => updateTrayMenu(getWindow))
 
-  // Refresh tray every minute so the expiry countdown in the tooltip stays roughly current
+  // Refresh tray every minute so the expiry countdown in the tooltip stays
+  // roughly current, and push an expiries-changed event so the renderer
+  // can re-fetch without running its own polling timer. This covers SSO
+  // cache files, which we don't watch directly.
   trayRefreshHandle = setInterval(() => {
     updateTrayMenu(getWindow).catch(() => {
       /* transient failure — try again next tick */
     })
+    broadcastExpiriesChanged()
   }, 60_000)
 
   app.on('activate', () => {

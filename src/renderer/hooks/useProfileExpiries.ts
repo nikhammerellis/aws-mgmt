@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ProfileExpiry } from '../types'
 
-const REFRESH_MS = 30_000
-
 export interface ExpiryStatus {
   expiresAt: Date
   remainingMs: number
@@ -63,17 +61,18 @@ export function useProfileExpiries() {
     return () => clearInterval(handle)
   }, [raw])
 
-  // Poll the main process for fresh cache reads less often than the UI tick.
-  // Also refresh whenever the file watcher reports a credentials change so a
-  // saml2aws login completing in an external terminal updates the badge
-  // immediately instead of waiting up to REFRESH_MS.
+  // Refresh when either (a) the credentials file changes, or (b) the main
+  // process explicitly broadcasts expiries-changed (fires every 60s from
+  // the tray refresh tick, which covers SSO cache files that the file
+  // watcher doesn't watch directly). No polling in the renderer — the
+  // single timer lives in the main process.
   useEffect(() => {
     refresh()
-    const handle = setInterval(refresh, REFRESH_MS)
-    const unsub = window.api.onProfilesChanged(refresh)
+    const unsubProfiles = window.api.onProfilesChanged(refresh)
+    const unsubExpiries = window.api.onExpiriesChanged(refresh)
     return () => {
-      clearInterval(handle)
-      unsub()
+      unsubProfiles()
+      unsubExpiries()
     }
   }, [refresh])
 

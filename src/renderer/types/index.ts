@@ -11,6 +11,11 @@ export interface AwsProfile {
   ssoRegion?: string
   ssoAccountId?: string
   ssoRoleName?: string
+  /** AWS CLI v2 modern SSO: reference to a top-level [sso-session NAME] block. */
+  ssoSession?: string
+  /** Resolved from the referenced sso-session block (if any), for UX only. */
+  ssoSessionStartUrl?: string
+  ssoSessionRegion?: string
   // From credentials
   hasCredentials: boolean
   accessKeyId?: string
@@ -50,6 +55,20 @@ export interface ProfileTestFailure {
 }
 
 export type ProfileTestResult = ProfileTestSuccess | ProfileTestFailure
+
+export interface LoginVerification {
+  profileName: string
+  result: ProfileTestResult
+}
+
+export interface SwitchResult {
+  /** True if the change persists across new shells. False on Linux. */
+  persisted: boolean
+  /** Platform-specific mechanism used, for surfacing to the user. */
+  mechanism: 'setx' | 'launchctl' | 'process-only'
+  /** Human-readable reason for a non-persistent switch, if any. */
+  note?: string
+}
 
 export interface LaunchLoginPayload {
   kind: 'sso' | 'saml-target'
@@ -117,7 +136,7 @@ export interface ElectronAPI {
   // AWS Profiles
   getProfiles(): Promise<AwsProfile[]>
   getActiveProfile(): Promise<string | null>
-  switchProfile(name: string): Promise<void>
+  switchProfile(name: string): Promise<SwitchResult>
   addProfile(data: NewProfileData): Promise<void>
   updateProfile(name: string, data: NewProfileData): Promise<void>
   deleteProfile(name: string): Promise<void>
@@ -128,6 +147,7 @@ export interface ElectronAPI {
   launchLogin(payload: LaunchLoginPayload): Promise<void>
   testProfile(name: string): Promise<ProfileTestResult>
   getProfileExpiries(): Promise<ProfileExpiry[]>
+  trackPendingLogin(name: string): Promise<void>
   // SAML Profiles
   getSamlProfiles(): Promise<SamlProfile[]>
   addSamlProfile(data: SamlProfile): Promise<void>
@@ -136,6 +156,8 @@ export interface ElectronAPI {
   // File change events
   onProfilesChanged(callback: () => void): () => void
   onSamlChanged(callback: () => void): () => void
+  onLoginVerified(callback: (payload: LoginVerification) => void): () => void
+  onExpiriesChanged(callback: () => void): () => void
 }
 
 declare global {

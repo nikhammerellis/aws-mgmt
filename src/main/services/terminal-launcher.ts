@@ -1,9 +1,10 @@
 import { spawn } from 'child_process'
 import type { ShellHint, ShellFlavor } from '../../renderer/types'
+import { PROFILE_NAME_PATTERN, AWS_OVERRIDE_VARS } from '../../shared/validation'
 
 export type { ShellHint }
 
-const NAME_PATTERN = /^[A-Za-z0-9_\-]+$/
+const NAME_PATTERN = PROFILE_NAME_PATTERN
 const PROFILE_TOKEN = '__PROFILE__'
 
 export function exportLineTemplateFor(flavor: ShellFlavor): string {
@@ -55,6 +56,18 @@ function spawnDetached(cmd: string, args: readonly string[], envExtras: NodeJS.P
   })
 }
 
+/**
+ * Escape a string for embedding inside an AppleScript string literal.
+ * AppleScript uses `"..."` with `\"` and `\\` escapes. We already enforce
+ * NAME_PATTERN at the IPC boundary so a `"` or `\` can't actually reach
+ * here today — this is defense-in-depth so that a future widening of the
+ * regex or a new caller that forgets to validate cannot produce code
+ * injection via `do script`.
+ */
+export function escapeAppleScriptString(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
 async function tryLaunchSequence(
   candidates: ReadonlyArray<{ cmd: string; args: readonly string[] }>,
   envExtras: NodeJS.ProcessEnv
@@ -72,6 +85,19 @@ async function tryLaunchSequence(
   throw lastErr instanceof Error ? lastErr : new Error('No terminal emulator found')
 }
 
+function buildSetProfileCommand(name: string): string {
+  if (process.platform === 'win32') {
+    // PowerShell: Remove-Item with SilentlyContinue in case the var isn't set.
+    const clears = AWS_OVERRIDE_VARS.map(
+      (v) => `Remove-Item Env:${v} -ErrorAction SilentlyContinue`
+    ).join('; ')
+    return `${clears}; $env:AWS_PROFILE = '${name}'; Write-Host "AWS_PROFILE set to ${name}"`
+  }
+  // POSIX: unset handles multiple vars in a single call.
+  const unsetLine = `unset ${AWS_OVERRIDE_VARS.join(' ')}`
+  return `${unsetLine} && export AWS_PROFILE=${name} && echo AWS_PROFILE set to ${name}`
+}
+
 export async function launchTerminalWithProfile(name: string): Promise<void> {
   if (!NAME_PATTERN.test(name)) {
     throw new Error(`Invalid profile name: ${name}`)
@@ -79,13 +105,9 @@ export async function launchTerminalWithProfile(name: string): Promise<void> {
 
   // Don't rely on spawn env inheritance — Windows Terminal (wt.exe) is a UWP
   // bridge that doesn't propagate the parent's env to its child shell. Instead,
-  // explicitly set the variable via a shell command in the new session.
-  const setCommand =
-    process.platform === 'win32'
-      ? `$env:AWS_PROFILE = '${name}'; Write-Host "AWS_PROFILE set to ${name}"`
-      : `export AWS_PROFILE=${name} && echo AWS_PROFILE set to ${name}`
-
-  await launchTerminalWithCommand(setCommand)
+  // explicitly set the variable via a shell command in the new session. Also
+  // clear any stale AWS_* vars that would otherwise override AWS_PROFILE.
+  await launchTerminalWithCommand(buildSetProfileCommand(name))
 }
 
 /**
@@ -121,7 +143,8 @@ export async function launchTerminalWithCommand(commandLine: string): Promise<vo
   }
 
   if (process.platform === 'darwin') {
-    const script = `tell application "Terminal" to do script "${commandLine}"`
+    const escaped = escapeAppleScriptString(commandLine)
+    const script = `tell application "Terminal" to do script "${escaped}"`
     await spawnDetached('osascript', ['-e', script], {})
     return
   }

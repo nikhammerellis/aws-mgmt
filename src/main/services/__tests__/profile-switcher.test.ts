@@ -58,33 +58,41 @@ describe('profile-switcher', () => {
   })
 
   describe('switchProfile', () => {
-    it('calls setx on Windows', async () => {
+    it('calls setx on Windows and reports persisted=true', async () => {
       Object.defineProperty(process, 'platform', { value: 'win32' })
       mockExecFileAsync.mockResolvedValue({ stdout: '' })
 
-      await switchProfile('dev')
+      const result = await switchProfile('dev')
 
       expect(mockExecFileAsync).toHaveBeenCalledWith('setx', ['AWS_PROFILE', 'dev'])
       expect(process.env.AWS_PROFILE).toBe('dev')
+      expect(result.persisted).toBe(true)
+      expect(result.mechanism).toBe('setx')
     })
 
-    it('calls launchctl on macOS', async () => {
+    it('calls launchctl on macOS and reports persisted=true', async () => {
       Object.defineProperty(process, 'platform', { value: 'darwin' })
       mockExecFileAsync.mockResolvedValue({ stdout: '' })
 
-      await switchProfile('staging')
+      const result = await switchProfile('staging')
 
       expect(mockExecFileAsync).toHaveBeenCalledWith('launchctl', ['setenv', 'AWS_PROFILE', 'staging'])
       expect(process.env.AWS_PROFILE).toBe('staging')
+      expect(result.persisted).toBe(true)
+      expect(result.mechanism).toBe('launchctl')
     })
 
-    it('only sets process.env on Linux', async () => {
+    it('reports persisted=false on Linux with an actionable note', async () => {
       Object.defineProperty(process, 'platform', { value: 'linux' })
 
-      await switchProfile('test')
+      const result = await switchProfile('test')
 
       expect(mockExecFileAsync).not.toHaveBeenCalled()
       expect(process.env.AWS_PROFILE).toBe('test')
+      expect(result.persisted).toBe(false)
+      expect(result.mechanism).toBe('process-only')
+      expect(result.note).toBeDefined()
+      expect(result.note).toMatch(/shell rc/)
     })
   })
 
