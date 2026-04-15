@@ -228,6 +228,12 @@ export function registerIpcHandlers(): void {
     if (payload?.kind === 'saml-target') {
       assertValidProfileName(payload.samlSection, 'saml2aws section')
     }
+    // hasRoleArn is optional; when present it must be a real boolean.
+    // Defense-in-depth against a compromised renderer smuggling a string
+    // that would be truthy-coerced.
+    if (payload?.hasRoleArn !== undefined && typeof payload.hasRoleArn !== 'boolean') {
+      throw new Error('Invalid launch-login payload: hasRoleArn must be a boolean')
+    }
     await launchLoginInTerminal(payload)
   })
 

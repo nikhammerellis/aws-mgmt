@@ -182,7 +182,8 @@ describe('ProfileCard split-button', () => {
     expect(onLogin).toHaveBeenCalledWith({
       kind: 'saml-target',
       profileName: 'work',
-      samlSection: 'work-okta'
+      samlSection: 'work-okta',
+      hasRoleArn: false
     })
   })
 })

@@ -253,7 +253,40 @@ describe('launchLoginInTerminal', () => {
 
     const [, args] = mockSpawn.mock.calls[0]
     const decoded = decodeEncodedCommand(args as string[])
-    expect(decoded).toContain('saml2aws login -a work-okta')
+    // Must include both the IdP section (-a) and the AWS profile write target
+    // (--profile). Real-world saml2aws configs often split these names.
+    expect(decoded).toContain('saml2aws login -a work-okta --profile dev')
+  })
+
+  it('omits --skip-prompt when the SAML profile has no role_arn', async () => {
+    setPlatform('win32')
+    mockSpawn.mockReturnValue(makeChild() as unknown as ReturnType<typeof spawn>)
+
+    await launchLoginInTerminal({
+      kind: 'saml-target',
+      profileName: 'dev',
+      samlSection: 'work-okta',
+      hasRoleArn: false
+    })
+
+    const decoded = decodeEncodedCommand(mockSpawn.mock.calls[0][1] as string[])
+    expect(decoded).toContain('saml2aws login -a work-okta --profile dev')
+    expect(decoded).not.toContain('--skip-prompt')
+  })
+
+  it('appends --skip-prompt when the SAML profile has role_arn set', async () => {
+    setPlatform('win32')
+    mockSpawn.mockReturnValue(makeChild() as unknown as ReturnType<typeof spawn>)
+
+    await launchLoginInTerminal({
+      kind: 'saml-target',
+      profileName: 'dev',
+      samlSection: 'work-okta',
+      hasRoleArn: true
+    })
+
+    const decoded = decodeEncodedCommand(mockSpawn.mock.calls[0][1] as string[])
+    expect(decoded).toContain('saml2aws login -a work-okta --profile dev --skip-prompt')
   })
 
   it('uses osascript on macOS', async () => {

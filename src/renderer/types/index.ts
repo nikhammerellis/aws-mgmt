@@ -74,6 +74,14 @@ export interface LaunchLoginPayload {
   kind: 'sso' | 'saml-target'
   profileName: string
   samlSection?: string
+  /**
+   * True when the SAML profile has `role_arn` set in ~/.saml2aws. Drives
+   * whether the launcher appends `--skip-prompt` to the saml2aws command.
+   * When role_arn is unset, we MUST keep the interactive role picker so
+   * first-time logins don't hang (saml2aws has no fallback resolution for
+   * role selection once --skip-prompt suppresses the TTY picker).
+   */
+  hasRoleArn?: boolean
 }
 
 export interface ProfileExpiry {

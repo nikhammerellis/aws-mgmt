@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] — 2026-04-15
+
+### Fixed
+
+- **saml2aws Login now correctly writes credentials for configs that split the IdP block name from the AWS profile target.** Previous versions invoked `saml2aws login -a <section>`, which only specifies the `~/.saml2aws` IdP section. Users with a single `[default]` IdP block routing credentials to multiple AWS profiles (the most common real-world pattern outside the 1:1-section-per-profile case) saw the browser auth succeed but the credential write silently skip or mis-target. The app now passes both `-a <samlSection> --profile <awsProfile>` — disambiguating every layout regardless of whether section names match AWS profile names, and whether `aws_profile` is set inline in the SAML profile. Both fields are already validated at the IPC boundary (NAME_PATTERN-checked before reaching the spawn), so no new attack surface.
+- **Conditional `--skip-prompt` based on whether `role_arn` is configured.** saml2aws's `--skip-prompt` disables the interactive role-selection picker. When the IdP grants multiple AWS roles and `role_arn` isn't set in `~/.saml2aws`, the suppressed picker has no fallback — saml2aws hangs waiting for stdin that will never come. The app now appends `--skip-prompt` only when the SAML profile carries a non-empty `role_arn`. First-time logins get the interactive picker (required to resolve which role to use); saml2aws writes the picked role back into `~/.saml2aws` automatically, so subsequent logins pick up `--skip-prompt` for free (faster, no prompt flicker). A new `hasRoleArn` boolean flag on `LaunchLoginPayload` carries this signal — the ARN itself never crosses the IPC boundary or enters the shell command. IPC validation enforces strict `typeof === 'boolean'` on the optional field.
+
 ## [0.2.4] — 2026-04-14
 
 ### Fixed

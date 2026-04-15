@@ -18,8 +18,25 @@ describe('getLoginAction', () => {
     expect(action.payload).toEqual({
       kind: 'saml-target',
       profileName: 'dev',
-      samlSection: 'work-okta'
+      samlSection: 'work-okta',
+      hasRoleArn: false
     })
+  })
+
+  it('sets hasRoleArn=true when the SAML source has role_arn configured', () => {
+    const sources: SamlProfile[] = [
+      { name: 'work-okta', provider: 'Okta', roleArn: 'arn:aws:iam::1:role/Admin' }
+    ]
+    const action = getLoginAction(profile({ name: 'dev' }), sources)
+    expect(action.payload?.hasRoleArn).toBe(true)
+  })
+
+  it('treats an empty-string role_arn as unset (hasRoleArn=false)', () => {
+    const sources: SamlProfile[] = [
+      { name: 'work-okta', provider: 'Okta', roleArn: '   ' }
+    ]
+    const action = getLoginAction(profile({ name: 'dev' }), sources)
+    expect(action.payload?.hasRoleArn).toBe(false)
   })
 
   it('returns an SSO payload when sso_start_url is set and no SAML source exists', () => {
