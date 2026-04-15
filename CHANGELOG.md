@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] — 2026-04-14
+
+### Fixed
+
+- **Credentials-file changes from external tools (saml2aws, aws sso login, aws-vault) now reliably refresh the UI.** Replaced node's `fs.watch` with `chokidar` in `src/main/services/file-watcher.ts`. `fs.watch` was missing rename-based atomic writes on macOS APFS and some Linux filesystems, leaving the expiry badge stale until the next 60s tray-broadcast tick. Chokidar's `awaitWriteFinish` waits for the file to stabilize and fires once, catching the saml2aws/aws-cli atomic-write pattern that triggered the original bug.
+- **Active badge tooltip clarifies what "active" means.** The badge now reads "System-default profile (set via setx on Windows / launchctl on macOS). Terminal-local AWS_PROFILE exports are not reflected here." Prevents repeat confusion for users who `export AWS_PROFILE` in a shell and expect the app to pick it up.
+
+### Changed
+
+- `stopFileWatchers()` is now async (chokidar's `close()` returns a Promise). The single caller in `src/main/index.ts`'s quit handler is fire-and-forget — process exit reaps file handles regardless.
+
+### Dependencies
+
+- `chokidar ^5.0.0` added as a runtime dependency.
+
+## [0.2.1] — 2026-04-14
+
+### Added
+
+- **App version visible in three places**: OS-level window title bar, header badge next to the H1, and (already) the installer filename. Pulled live from `package.json` via `app.getVersion()` IPC — no hardcoded strings to drift across releases. The Header sets `document.title` on mount so the title bar stays accurate after the page loads.
+
 ## [0.2.0] — 2026-04-13
 
 First release focused on data-safety and security hardening. Coworker-test-ready.

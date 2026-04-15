@@ -124,6 +124,9 @@ app.on('window-all-closed', () => {
 
 app.on('quit', () => {
   if (trayRefreshHandle) clearInterval(trayRefreshHandle)
-  stopFileWatchers()
+  // stopFileWatchers is async (chokidar.close() returns a Promise) but the
+  // process is dying anyway — fire-and-forget is fine. The OS reaps file
+  // handles on exit.
+  void stopFileWatchers()
   destroyTray()
 })
