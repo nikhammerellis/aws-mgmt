@@ -18,8 +18,6 @@ Desktop app for managing local AWS CLI profiles, SAML2AWS configs, and SSO login
 
 ## Screenshots
 
-> Drop PNGs into [`docs/screenshots/`](docs/screenshots/) with the filenames below and these render automatically.
-
 ### Main window
 
 Profile list, detail pane, active profile badge, live expiry countdowns, and the system tray icon.
