@@ -18,7 +18,43 @@ Desktop app for managing local AWS CLI profiles, SAML2AWS configs, and SSO login
 
 ## Screenshots
 
-*Coming soon.*
+> Drop PNGs into [`docs/screenshots/`](docs/screenshots/) with the filenames below and these render automatically.
+
+### Main window
+
+Profile list, detail pane, active profile badge, live expiry countdowns, and the system tray icon.
+
+![Main window](docs/screenshots/main-view.png)
+
+### Type-aware profile wizard
+
+Pick IAM Keys, SSO, Assume Role, or SAML Target — the form shows only the fields that apply, with a diff review before save.
+
+![Profile wizard](docs/screenshots/add-profile.png)
+
+### Command palette
+
+`Ctrl/Cmd+K` opens a fuzzy-search palette across every profile and every action — switch, login, rename, copy export, launch terminal.
+
+![Command palette](docs/screenshots/command-palette.png)
+
+### System tray
+
+Quick profile switcher with the active profile + region + expiry countdown in the tooltip. Close-to-tray keeps the app resident.
+
+![System tray menu](docs/screenshots/tray-menu.png)
+
+### SAML ↔ AWS linkage
+
+SAML profiles show which AWS profile they populate; click-through navigation works in both directions.
+
+![SAML configuration](docs/screenshots/saml-card.png)
+
+### Action Menu per profile
+
+Profile cards have an action menu where you can launch terminals or SAML login. 
+
+![Action Menu](docs/screenshots/launch-options.png)
 
 ## Getting started
 
