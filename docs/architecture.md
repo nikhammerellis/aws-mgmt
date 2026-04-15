@@ -154,7 +154,7 @@ Pending-login state is in-memory with a 120s TTL so an abandoned login doesn't s
 | `src/main/services/terminal-launcher.ts` | Terminal spawn with env hygiene + AppleScript escape |
 | `src/main/services/login-verifier.ts` | Post-login STS verification with TTL |
 | `src/main/services/expiry-tracker.ts` | SSO cache + saml2aws expiry resolution |
-| `src/main/services/file-watcher.ts` | fs.watch + writeLock + expiries broadcast |
+| `src/main/services/file-watcher.ts` | chokidar (awaitWriteFinish) + writeLock + expiries broadcast |
 | `src/main/services/backup.ts` | Rolling backup to ~/.aws/aws-mgmt-backups/ |
 | `src/main/utils/ini-helpers.ts` | Atomic INI read/write with mode option |
 | `src/main/utils/paths.ts` | AWS file path resolution (respects env var overrides) |
@@ -168,7 +168,6 @@ Pending-login state is in-memory with a 120s TTL so an abandoned login doesn't s
 ## Known Issues
 
 - **ELECTRON_RUN_AS_NODE**: VS Code and Claude Code run inside Electron, so their terminals inherit `ELECTRON_RUN_AS_NODE=1`. This makes Electron behave as plain Node.js, preventing `require("electron")` from resolving the built-in module. The variable must be **fully deleted** from the environment (empty string is not enough). Fix: `scripts/dev.js` launcher uses `delete process.env.ELECTRON_RUN_AS_NODE` before spawning `electron-vite`. Works cross-platform from any terminal.
-- **`fs.watch` reliability**: node's native watch is known-flaky on some Linux distros and network filesystems; editor atomic-save patterns can be missed. Not data-destructive — just means the UI's expiry badge might lag until the next 60s push. Swapping to `chokidar` is on the backlog.
 - **Profile-rename CLI cache clear** wipes all `~/.aws/cli/cache/*.json` files (since they're keyed by role-ARN+source hash, not profile name). Other profiles sharing an assume-role chain will need to re-login on next use. Tracked as a future scoped-clear enhancement.
 - **No auto-updater yet**. Current releases require manual reinstall. Planned before public distribution.
 - **Linux profile persistence**: there is no OS-level mechanism to make `AWS_PROFILE` persist across new shells. The app returns `persisted: false` and tells the user to add the export to their shell rc.
