@@ -19,15 +19,21 @@ export interface LoginAction {
  */
 export function getLoginAction(profile: AwsProfile, samlSources: SamlProfile[]): LoginAction {
   if (samlSources.length > 0) {
-    const section = samlSources[0].name
+    const saml = samlSources[0]
+    // hasRoleArn drives whether the launcher appends --skip-prompt. Trim-
+    // check rather than truthy-check so an explicit empty-string role_arn
+    // (which some saml2aws setups leave in place) still counts as "unset"
+    // and keeps the interactive role picker available.
+    const hasRoleArn = !!(saml.roleArn && saml.roleArn.trim().length > 0)
     return {
       enabled: true,
       label: 'Login via saml2aws',
-      hint: section,
+      hint: saml.name,
       payload: {
         kind: 'saml-target',
         profileName: profile.name,
-        samlSection: section
+        samlSection: saml.name,
+        hasRoleArn
       }
     }
   }

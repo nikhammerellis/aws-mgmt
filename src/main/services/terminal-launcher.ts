@@ -181,7 +181,23 @@ export async function launchLoginInTerminal(payload: LaunchLoginPayload): Promis
     if (!payload.samlSection || !NAME_PATTERN.test(payload.samlSection)) {
       throw new Error('Invalid saml2aws section name')
     }
-    commandLine = `saml2aws login -a ${payload.samlSection}`
+    // Pass both --idp-account (-a) and --profile. Real-world saml2aws
+    // configs split the IdP block name from the AWS-profile write target:
+    // a user with a single `[default]` IdP block routes credentials to
+    // many AWS profiles via --profile, and a user with named sections
+    // like `[client-prod]` still benefits from --profile being explicit.
+    // Passing both flags disambiguates every layout without forcing us to
+    // guess at fallback behavior inside saml2aws.
+    //
+    // Append --skip-prompt only when the SAML profile has role_arn set.
+    // Without role_arn, --skip-prompt hangs saml2aws on the first login
+    // because the suppressed TTY picker has no fallback to resolve which
+    // role to assume from a multi-role SAML assertion. Once a first
+    // interactive login writes role_arn back into ~/.saml2aws, subsequent
+    // logins get the fast path automatically.
+    let cmd = `saml2aws login -a ${payload.samlSection} --profile ${payload.profileName}`
+    if (payload.hasRoleArn) cmd += ' --skip-prompt'
+    commandLine = cmd
   } else {
     throw new Error(`Unsupported login kind: ${payload.kind}`)
   }
