@@ -9,7 +9,7 @@ Desktop app for managing local AWS CLI profiles, SAML2AWS configs, and SSO login
 - **SAML2AWS config** — manage `~/.saml2aws` profiles with bidirectional links showing which SAML profiles feed which AWS profiles. saml2aws metadata like `x_security_token_expires` and `x_principal_arn` is preserved across UI edits.
 - **Switch profiles** — set the system-level `AWS_PROFILE` so new terminals inherit it. Copy shell-specific export lines, or launch a new terminal with a profile pre-set. Launched terminals start with a clean `AWS_*` environment so stale keys or `AWS_PROFILE` values don't silently override the selected profile.
 - **Login** — one-click login for SSO and SAML2AWS profiles. Opens a terminal with the right command (`aws sso login` or `saml2aws login`) so you complete the auth flow in a familiar shell. When the credentials file updates post-login, the app runs an STS probe and toasts the resolved ARN/account so you get affirmative confirmation that the login actually worked.
-- **Session tracking** — live countdown badges show when SSO/SAML credentials expire. Desktop notification fires 5 minutes before expiry. Expiry updates are pushed from the main process (on file changes and via a 60s tick) — no renderer polling.
+- **Session tracking** — live countdown badges show when SSO/SAML credentials expire. Desktop notification fires 5 minutes before expiry. Expiry updates are pushed from the main process (on file changes and via a 60s tick) — no renderer polling. The file watcher uses `chokidar` with `awaitWriteFinish`, so atomic-rename writes from external tools (saml2aws, `aws sso login`, aws-vault) are caught reliably across macOS, Linux, and Windows.
 - **Type-aware wizard** — creating a new profile asks what kind (IAM Keys, SSO, Assume Role, SAML2AWS Target) and shows only the relevant fields. Review step previews the diff before writing.
 - **Command palette** — `Ctrl/Cmd+K` opens a fuzzy-search palette over all profiles and actions (switch, login, rename, duplicate, launch terminal, copy export).
 - **System tray** — tray icon with a radio-button profile switcher, active profile + region + expiry in the tooltip. Close-to-tray so the app stays resident. Single-instance lock — launching twice focuses the existing window.
@@ -39,7 +39,7 @@ npm run dev
 ### Run tests
 
 ```bash
-npm test                    # all tests (main + shared + renderer, ~250 tests)
+npm test                    # all tests (main + shared + renderer, ~255 tests)
 npm run test:main           # main + shared (Node env) only
 npm run test:renderer       # renderer (jsdom) only
 ```
@@ -112,6 +112,7 @@ git push && git push --tags  # triggers CI
 | Packaging | electron-builder 26 |
 | Testing | Vitest 4, React Testing Library |
 | INI parsing | `ini` 5 |
+| File watching | `chokidar` 5 |
 
 ## Project structure
 
