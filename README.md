@@ -112,7 +112,7 @@ git push && git push --tags  # triggers CI
 | Packaging | electron-builder 26 |
 | Testing | Vitest 4, React Testing Library |
 | INI parsing | `ini` 5 |
-| File watching | `chokidar` 5 |
+| File watching | `chokidar` 3 |
 
 ## Project structure
 

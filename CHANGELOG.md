@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] — 2026-04-14
+
+### Fixed
+
+- **App failed to launch on packaged builds with `ERR_REQUIRE_ESM`.** v0.2.2 / v0.2.3 shipped with `chokidar ^5.0.0`, which is pure ESM. Our main process bundle is CommonJS and `externalizeDepsPlugin` leaves dependencies as runtime `require()`s, which can't load ESM modules. Pinned `chokidar ^3.6.0` (the last CJS version) — identical API surface for `watch` / `awaitWriteFinish` / `on('all')` / `on('error')` / `close()`, so no code changes needed beyond the dependency version. v3.6.0 is the chokidar version Vite, Webpack, ESLint, and most of the JS ecosystem ships with — well-maintained and battle-tested.
+
+## [0.2.3] — 2026-04-14
+
+### Changed
+
+- README and architecture docs updated to reflect the v0.2.2 file-watcher swap (chokidar in Stack table, chokidar mentioned in Session-tracking bullet, stale `fs.watch` Known-Issue removed from architecture.md, Key-Files table line for `file-watcher.ts` updated).
+
+(Note: this release inherited the chokidar v5 ESM bug from v0.2.2 — fixed in 0.2.4.)
+
 ## [0.2.2] — 2026-04-14
 
 ### Fixed
