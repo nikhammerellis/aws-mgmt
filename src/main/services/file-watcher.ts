@@ -1,10 +1,21 @@
-import { watch, type FSWatcher } from 'fs'
-import { dirname } from 'path'
+import chokidar, { type FSWatcher } from 'chokidar'
 import { BrowserWindow } from 'electron'
 import { getAwsConfigPath, getAwsCredentialsPath, getSamlConfigPath } from '../utils/paths'
 import { getPendingLogins, verifyLogin } from './login-verifier'
 
-let watchers: FSWatcher[] = []
+/**
+ * File watcher for ~/.aws/config, ~/.aws/credentials, and ~/.saml2aws.
+ *
+ * We use chokidar (not node's `fs.watch`) because every credential tool that
+ * cares about durability — saml2aws, aws-cli's own SSO refresh, aws-vault,
+ * our own atomic writes — does write-then-rename. node's `fs.watch` on the
+ * target path is well-known to drop those rename events on macOS APFS and
+ * some Linux filesystems. chokidar normalizes that for us via
+ * `awaitWriteFinish`, which holds the event until the file stops being
+ * mutated and then fires once.
+ */
+
+let watcher: FSWatcher | null = null
 let writeLock = false
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -14,39 +25,39 @@ export function setWriteLock(): void {
 }
 
 export function startFileWatchers(): void {
-  stopFileWatchers()
+  // Fire-and-forget; close is async but we don't want to block startup on it.
+  void stopFileWatchers()
 
-  const awsDir = dirname(getAwsConfigPath())
+  const configPath = getAwsConfigPath()
+  const credsPath = getAwsCredentialsPath()
   const samlPath = getSamlConfigPath()
 
-  // Watch ~/.aws/ directory for config/credentials changes
-  try {
-    const awsWatcher = watch(awsDir, (eventType, filename) => {
-      if (writeLock) return
-      if (filename === 'config' || filename === 'credentials') {
-        const credentialsChanged = filename === 'credentials'
-        debouncedNotify('profiles-changed', { verifyPendingLogins: credentialsChanged })
-        // Credentials changes affect saml2aws expiry; config changes do not,
-        // but also broadcasting expiries-changed on config updates is cheap
-        // and keeps the UI in sync when a user adds/removes a profile.
-        debouncedBroadcast('expiries-changed', 'aws-file')
-      }
-    })
-    watchers.push(awsWatcher)
-  } catch {
-    // Directory may not exist
-  }
+  watcher = chokidar.watch([configPath, credsPath, samlPath], {
+    ignoreInitial: true,
+    followSymlinks: false,
+    awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
+    persistent: true
+  })
 
-  // Watch ~/.saml2aws file
-  try {
-    const samlWatcher = watch(samlPath, () => {
-      if (writeLock) return
+  watcher.on('all', (_event, path) => {
+    if (writeLock) return
+    if (path === configPath || path === credsPath) {
+      const credentialsChanged = path === credsPath
+      debouncedNotify('profiles-changed', { verifyPendingLogins: credentialsChanged })
+      // Both config and credentials changes are cheap to broadcast; keeps
+      // the UI in sync when a user adds/removes a profile or refreshes creds.
+      debouncedBroadcast('expiries-changed', 'aws-file')
+    } else if (path === samlPath) {
       debouncedNotify('saml-changed', { verifyPendingLogins: false })
-    })
-    watchers.push(samlWatcher)
-  } catch {
-    // File may not exist
-  }
+    }
+  })
+
+  // Errors from chokidar are non-fatal — log and keep going so a single
+  // bad path (e.g. ~/.saml2aws missing on a fresh machine) doesn't kill
+  // the watcher for the other two files.
+  watcher.on('error', () => {
+    /* swallow — file may not exist yet, will appear when first created */
+  })
 }
 
 /**
@@ -73,11 +84,12 @@ function debouncedBroadcast(channel: string, key: string): void {
   expiryBroadcastTimers.set(key, timer)
 }
 
-export function stopFileWatchers(): void {
-  for (const w of watchers) {
-    w.close()
+export async function stopFileWatchers(): Promise<void> {
+  if (watcher) {
+    const w = watcher
+    watcher = null
+    await w.close()
   }
-  watchers = []
 }
 
 function broadcast(channel: string, ...args: unknown[]): void {
