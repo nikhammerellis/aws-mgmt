@@ -22,7 +22,9 @@ vi.mock('electron', () => {
     BrowserWindow: { getAllWindows: vi.fn().mockReturnValue([]) },
     app: {
       isPackaged: false,
-      exit: vi.fn()
+      exit: vi.fn(),
+      getLoginItemSettings: vi.fn().mockReturnValue({ openAtLogin: false }),
+      setLoginItemSettings: vi.fn()
     }
   }
 })

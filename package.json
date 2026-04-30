@@ -1,6 +1,6 @@
 {
   "name": "aws-mgmt",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "AWS Profile Manager - Desktop app for managing AWS CLI profiles",
   "main": "./out/main/index.js",
   "scripts": {
