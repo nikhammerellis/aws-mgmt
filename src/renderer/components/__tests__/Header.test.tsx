@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { Header } from '../Header'
 import type { AwsProfile } from '../../types'
 
@@ -55,5 +55,38 @@ describe('Header', () => {
     await new Promise((r) => setTimeout(r, 0))
     expect(document.title).toBe('preset')
     expect(screen.queryByText(/^v/)).not.toBeInTheDocument()
+  })
+
+  describe('refresh button', () => {
+    it('does not render when no onRefresh handler is provided', () => {
+      render(<Header activeProfile={null} />)
+      expect(screen.queryByLabelText('Refresh')).not.toBeInTheDocument()
+    })
+
+    it('renders and fires onRefresh when clicked', () => {
+      const onRefresh = vi.fn()
+      render(<Header activeProfile={null} onRefresh={onRefresh} />)
+      const btn = screen.getByLabelText('Refresh')
+      fireEvent.click(btn)
+      expect(onRefresh).toHaveBeenCalledTimes(1)
+    })
+
+    it('disables the button while refreshing', () => {
+      const onRefresh = vi.fn()
+      render(<Header activeProfile={null} onRefresh={onRefresh} refreshing />)
+      const btn = screen.getByLabelText('Refresh')
+      expect(btn).toBeDisabled()
+      fireEvent.click(btn)
+      expect(onRefresh).not.toHaveBeenCalled()
+    })
+
+    it('applies the spin class while refreshing', () => {
+      const { rerender } = render(
+        <Header activeProfile={null} onRefresh={vi.fn()} refreshing={false} />
+      )
+      expect(screen.getByLabelText('Refresh').className).not.toMatch(/is-refreshing/)
+      rerender(<Header activeProfile={null} onRefresh={vi.fn()} refreshing />)
+      expect(screen.getByLabelText('Refresh').className).toMatch(/is-refreshing/)
+    })
   })
 })

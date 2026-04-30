@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] — 2026-04-15
+
+### Added
+
+- **"Launch at startup" toggle in the tray menu.** Windows-installed apps via NSIS aren't automatically registered with the Startup Apps list, so the only way to enable boot-time launch was to manually drop a shortcut into `shell:startup`. The tray menu now exposes a checkbox-style "Launch at startup" item that toggles `app.setLoginItemSettings()` — the OS-native mechanism (HKCU\...\Run on Windows, LaunchAgents on macOS). When enabled, the app registers itself with `--hidden` so boot-time launches go straight to the tray without popping the window. Manual launches (desktop shortcut, Start menu) still show the window normally. Linux is intentionally not exposed here — its autostart story is desktop-environment-specific (XDG vs systemd vs KDE/GNOME variants) and Electron's API is unreliable across distros.
+- **Manual refresh button in the header.** A small ↻ icon button next to the active profile triggers an immediate re-read of AWS profiles, SAML profiles, and credential expiries. Belt-and-braces escape hatch for any case where the file watcher doesn't catch a change — atomic-rename writes from unusual tools, network filesystems, or external editors with non-standard save patterns. The button spins while a refresh is in flight, disables to prevent rapid double-clicks, and toasts "Refreshed" on completion. Doesn't replace the automatic file-watcher / push-event flow — it's purely additive.
+
 ## [0.2.5] — 2026-04-15
 
 ### Fixed

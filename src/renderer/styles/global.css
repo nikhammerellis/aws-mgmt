@@ -80,6 +80,45 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.header-refresh {
+  -webkit-app-region: no-drag;
+  appearance: none;
+  border: 1px solid var(--border, #333);
+  background: transparent;
+  color: var(--text-secondary, #aaa);
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  margin-left: 6px;
+}
+
+.header-refresh:hover:not(:disabled) {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+  color: var(--text-primary, #fff);
+  border-color: var(--accent, #4a9eff);
+}
+
+.header-refresh:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.header-refresh.is-refreshing > span {
+  display: inline-block;
+  animation: header-refresh-spin 0.8s linear infinite;
+}
+
+@keyframes header-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+
 .header-active {
   display: flex;
   align-items: center;

@@ -2,7 +2,7 @@ import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { registerIpcHandlers, setOnProfilesUpdated } from './ipc-handlers'
 import { startFileWatchers, stopFileWatchers, broadcastExpiriesChanged } from './services/file-watcher'
-import { createTray, updateTrayMenu, destroyTray } from './services/tray'
+import { createTray, updateTrayMenu, destroyTray, wasLaunchedHidden } from './services/tray'
 
 let mainWindow: BrowserWindow | null = null
 let isQuitting = false
@@ -27,10 +27,15 @@ function createWindow(): void {
     }
   })
 
-  // Show window once ready to avoid flash
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.show()
-  })
+  // Show window once ready to avoid flash. Skip the auto-show when the
+  // app was launched via the OS auto-start registration (HIDDEN_ARG in
+  // argv) — boot-time launches go straight to tray. The user can pop
+  // the window via the tray icon click or the "Show Window" menu item.
+  if (!wasLaunchedHidden()) {
+    mainWindow.once('ready-to-show', () => {
+      mainWindow?.show()
+    })
+  }
 
   // Harden against a compromised renderer trying to navigate the window
   // away from the bundled UI, or to pop a window.open() to an attacker URL.

@@ -38,7 +38,8 @@ export default function App() {
     updateProfile,
     deleteProfile,
     getRenameImpact,
-    renameProfile
+    renameProfile,
+    refresh: refreshProfiles
   } = useProfiles()
   const {
     profiles: samlProfiles,
@@ -46,7 +47,8 @@ export default function App() {
     error: samlError,
     addProfile: addSamlProfile,
     updateProfile: updateSamlProfile,
-    deleteProfile: deleteSamlProfile
+    deleteProfile: deleteSamlProfile,
+    refresh: refreshSamlProfiles
   } = useSamlProfiles()
 
   const [selectedName, setSelectedName] = useState<string | null>(null)
@@ -61,7 +63,7 @@ export default function App() {
   const [announcement, setAnnouncement] = useState<string>('')
   const [paletteOpen, setPaletteOpen] = useState(false)
 
-  const { expiries } = useProfileExpiries()
+  const { expiries, refresh: refreshExpiries } = useProfileExpiries()
   const profileListRef = useRef<ProfileListHandle | null>(null)
 
   useEffect(() => {
@@ -186,6 +188,21 @@ export default function App() {
     // fact so users don't assume new terminals will pick up the profile.
     if (result && !result.persisted && result.note) {
       setToast(result.note)
+    }
+  }
+
+  const [refreshing, setRefreshing] = useState(false)
+  const handleRefresh = async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      // Run all three reads in parallel — they're independent.
+      await Promise.all([refreshProfiles(), refreshSamlProfiles(), refreshExpiries()])
+      setToast('Refreshed')
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : 'Refresh failed')
+    } finally {
+      setRefreshing(false)
     }
   }
 
@@ -353,7 +370,11 @@ export default function App() {
 
   return (
     <div className="app">
-      <Header activeProfile={activeProfile} />
+      <Header
+        activeProfile={activeProfile}
+        onRefresh={handleRefresh}
+        refreshing={refreshing}
+      />
       <div className="tab-bar">
         <button
           className={`tab ${activeTab === 'aws' ? 'active' : ''}`}

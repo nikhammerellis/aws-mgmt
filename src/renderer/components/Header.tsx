@@ -4,9 +4,13 @@ import { ActiveBadge } from './ActiveBadge'
 
 interface HeaderProps {
   activeProfile: AwsProfile | null
+  /** Manual refresh — re-reads profiles, SAML profiles, and expiries. */
+  onRefresh?: () => void | Promise<void>
+  /** True while a refresh is in-flight; disables the button and spins the icon. */
+  refreshing?: boolean
 }
 
-export function Header({ activeProfile }: HeaderProps) {
+export function Header({ activeProfile, onRefresh, refreshing }: HeaderProps) {
   const [version, setVersion] = useState<string | null>(null)
 
   // Fetch version once. Also sync document.title — the <title> element in
@@ -49,6 +53,20 @@ export function Header({ activeProfile }: HeaderProps) {
           </>
         ) : (
           <span className="no-active">No active profile</span>
+        )}
+        {onRefresh && (
+          <button
+            type="button"
+            className={`header-refresh ${refreshing ? 'is-refreshing' : ''}`}
+            onClick={() => {
+              void onRefresh()
+            }}
+            disabled={refreshing}
+            title="Refresh profiles, SAML config, and expiries"
+            aria-label="Refresh"
+          >
+            <span aria-hidden="true">↻</span>
+          </button>
         )}
       </div>
     </header>
