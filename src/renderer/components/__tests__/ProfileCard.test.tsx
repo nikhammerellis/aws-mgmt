@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { ProfileCard } from '../ProfileCard'
+import type { ExpiryStatus } from '../../hooks/useProfileExpiries'
 import type { AwsProfile, ShellHint } from '../../types'
 
 const baseProfile: AwsProfile = {
@@ -34,6 +35,7 @@ beforeEach(() => {
 interface RenderOpts {
   profile?: AwsProfile
   shellHint?: ShellHint | null
+  expiry?: ExpiryStatus | null
   onSwitch?: () => void
   onLaunchTerminal?: (name: string) => void
   onCopyFeedback?: (msg: string) => void
@@ -46,7 +48,7 @@ function renderCard(opts: RenderOpts = {}) {
     isFocused: false,
     samlSources: [],
     shellHint: opts.shellHint ?? bashHint,
-    expiry: null,
+    expiry: opts.expiry ?? null,
     onSelect: vi.fn(),
     onSwitch: opts.onSwitch ?? vi.fn(),
     onLaunchTerminal: opts.onLaunchTerminal ?? vi.fn(),
@@ -185,5 +187,45 @@ describe('ProfileCard split-button', () => {
       samlSection: 'work-okta',
       hasRoleArn: false
     })
+  })
+})
+
+describe('ProfileCard live session identity', () => {
+  const liveExpiry: ExpiryStatus = {
+    expiresAt: new Date('2030-06-01T00:00:00Z'),
+    remainingMs: 2 * 60 * 60_000,
+    severity: 'fresh',
+    source: 'saml2aws',
+    account: '333333333333',
+    region: 'us-east-1',
+    role: 'Admin-Konnect'
+  }
+
+  it('shows the live account and assumed-role from an active session', () => {
+    renderCard({ expiry: liveExpiry })
+    expect(screen.getByText(/333333333333/)).toBeInTheDocument()
+    expect(screen.getByText('Admin-Konnect')).toBeInTheDocument()
+  })
+
+  it('shows the live region with the configured default in the tooltip', () => {
+    // baseProfile is configured for us-west-2; the live session is us-east-1
+    renderCard({ expiry: liveExpiry })
+    const live = screen.getByText('us-east-1')
+    expect(live).toBeInTheDocument()
+    expect(live).toHaveAttribute('title', expect.stringContaining('us-west-2'))
+    expect(screen.queryByText('us-west-2')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the configured region when no live session is present', () => {
+    renderCard({ expiry: null })
+    const region = screen.getByText('us-west-2')
+    expect(region).toBeInTheDocument()
+    expect(region).not.toHaveAttribute('title')
+  })
+
+  it('does not render an account or role tag without a live session', () => {
+    renderCard({ expiry: null })
+    expect(screen.queryByText(/333333333333/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Admin-Konnect')).not.toBeInTheDocument()
   })
 })

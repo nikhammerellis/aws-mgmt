@@ -6,6 +6,10 @@ export interface ExpiryStatus {
   remainingMs: number
   severity: 'fresh' | 'warning' | 'critical' | 'expired'
   source: ProfileExpiry['source']
+  /** Live session identity from the credentials file (saml2aws), if available. */
+  account?: string
+  region?: string
+  role?: string
 }
 
 export function formatRemaining(remainingMs: number): string {
@@ -51,7 +55,10 @@ export function useProfileExpiries() {
           expiresAt,
           remainingMs,
           severity: computeSeverity(remainingMs),
-          source: entry.source
+          source: entry.source,
+          account: entry.account,
+          region: entry.region,
+          role: entry.role
         })
       }
       setMap(next)

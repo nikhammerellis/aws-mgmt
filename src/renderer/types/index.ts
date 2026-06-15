@@ -88,6 +88,17 @@ export interface ProfileExpiry {
   profileName: string
   expiresAt: string
   source: 'sso' | 'saml2aws'
+  /**
+   * Live session identity, parsed from ~/.aws/credentials when a saml2aws
+   * login is active. These reflect the *actual* authenticated session, which
+   * can differ from the statically-configured profile (e.g. logged into
+   * us-east-1 while the config region is us-west-2).
+   */
+  account?: string
+  /** Live session region (the `region` key written at login). */
+  region?: string
+  /** Assumed-role name parsed from x_principal_arn, e.g. `Admin-Konnect`. */
+  role?: string
 }
 
 export type ShellFlavor = 'bash' | 'zsh' | 'fish' | 'pwsh' | 'cmd'

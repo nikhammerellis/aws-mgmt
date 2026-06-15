@@ -45,14 +45,37 @@ async function readSsoCacheByStartUrl(): Promise<Map<string, string>> {
   return byUrl
 }
 
-async function readSamlExpiries(): Promise<Map<string, string>> {
-  const byName = new Map<string, string>()
+interface SamlSession {
+  expiresAt: string
+  account?: string
+  region?: string
+  role?: string
+}
+
+/**
+ * Parse the account id and assumed-role name out of a saml2aws principal ARN,
+ * e.g. `arn:aws:sts::333333333333:assumed-role/Admin-Konnect/user`
+ * yields `{ account: '333333333333', role: 'Admin-Konnect' }`.
+ */
+function parsePrincipalArn(arn: unknown): { account?: string; role?: string } {
+  if (typeof arn !== 'string') return {}
+  const match = /^arn:aws[^:]*:(?:sts|iam)::(\d+):(?:assumed-role|role)\/([^/]+)/.exec(arn)
+  if (!match) return {}
+  return { account: match[1], role: match[2] }
+}
+
+async function readSamlExpiries(): Promise<Map<string, SamlSession>> {
+  const byName = new Map<string, SamlSession>()
   try {
     const data = await readIniFile(getAwsCredentialsPath())
     for (const [section, values] of Object.entries(data)) {
       const expires = values.x_security_token_expires
       if (typeof expires === 'string' && expires.length > 0) {
-        byName.set(section, expires)
+        const { account, role } = parsePrincipalArn(values.x_principal_arn)
+        const region = typeof values.region === 'string' && values.region.length > 0
+          ? values.region
+          : undefined
+        byName.set(section, { expiresAt: expires, account, region, role })
       }
     }
   } catch {
@@ -91,17 +114,17 @@ export async function getProfileExpiries(): Promise<ProfileExpiry[]> {
       }
     }
     // SAML2AWS (from credentials file)
-    const samlExpiry = samlByName.get(profile.name)
-    if (samlExpiry) {
-      results.push({ profileName: profile.name, expiresAt: samlExpiry, source: 'saml2aws' })
+    const samlSession = samlByName.get(profile.name)
+    if (samlSession) {
+      results.push({ profileName: profile.name, source: 'saml2aws', ...samlSession })
     }
   }
 
   // Also surface credentials-only profiles (no config section) that have saml2aws expiry
   const configNames = new Set(awsConfig.map((p) => p.name))
-  for (const [name, expiresAt] of samlByName) {
+  for (const [name, session] of samlByName) {
     if (!configNames.has(name)) {
-      results.push({ profileName: name, expiresAt, source: 'saml2aws' })
+      results.push({ profileName: name, source: 'saml2aws', ...session })
     }
   }
 

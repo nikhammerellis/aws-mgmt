@@ -91,6 +91,40 @@ describe('getProfileExpiries', () => {
     ])
   })
 
+  it('parses live account, region, and assumed-role from saml2aws credentials', async () => {
+    mockReadIni.mockImplementation((path: string) => {
+      if (path === '/home/test/.aws/config') {
+        return Promise.resolve({ 'profile saml': { region: 'us-west-2' } })
+      }
+      if (path === '/home/test/.aws/credentials') {
+        return Promise.resolve({
+          saml: {
+            aws_access_key_id: 'AKIA',
+            region: 'us-east-1',
+            x_principal_arn:
+              'arn:aws:sts::333333333333:assumed-role/Admin-Konnect/user@example.com',
+            x_security_token_expires: '2030-06-01T00:00:00Z'
+          }
+        })
+      }
+      return Promise.resolve({})
+    })
+    mockReaddir.mockResolvedValue([] as never)
+
+    const result = await getProfileExpiries()
+
+    expect(result).toEqual([
+      {
+        profileName: 'saml',
+        expiresAt: '2030-06-01T00:00:00Z',
+        source: 'saml2aws',
+        account: '333333333333',
+        region: 'us-east-1',
+        role: 'Admin-Konnect'
+      }
+    ])
+  })
+
   it('surfaces saml2aws profiles that have no config entry', async () => {
     mockReadIni.mockImplementation((path: string) => {
       if (path === '/home/test/.aws/config') return Promise.resolve({})

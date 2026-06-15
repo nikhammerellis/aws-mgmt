@@ -197,7 +197,40 @@ export function ProfileCard({
         </div>
       </div>
       <div className="profile-card-meta">
-        {profile.region && <span className="meta-tag">{profile.region}</span>}
+        {(() => {
+          const liveRegion = expiry?.region
+          const displayRegion = liveRegion ?? profile.region
+          if (!displayRegion) return null
+          const isLive = !!liveRegion && liveRegion !== profile.region
+          return (
+            <span
+              className={`meta-tag ${isLive ? 'live-region-tag' : ''}`}
+              title={
+                isLive
+                  ? `Live session region (configured default: ${profile.region ?? 'none'})`
+                  : undefined
+              }
+            >
+              {displayRegion}
+            </span>
+          )
+        })()}
+        {expiry?.account && (
+          <span
+            className="meta-tag account-tag"
+            title={`Authenticated account: ${expiry.account}`}
+          >
+            🔑 {expiry.account}
+          </span>
+        )}
+        {expiry?.role && (
+          <span
+            className="meta-tag live-role-tag"
+            title={`Assumed role: ${expiry.role}`}
+          >
+            {expiry.role}
+          </span>
+        )}
         {profile.hasCredentials && <span className="meta-tag credentials-tag">Credentials</span>}
         {profile.roleArn && <span className="meta-tag role-tag">Role</span>}
         {samlSources.length > 0 && (

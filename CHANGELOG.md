@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7] — 2026-06-15
+
+### Added
+
+- **SAML profile cards now show the live authenticated session identity.** When a `saml2aws login` is active, the card surfaces the *actual* logged-in account, region, and assumed-role name — not just the statically-configured values. These are parsed straight from `~/.aws/credentials`, which saml2aws populates at login: the account id and role name come from `x_principal_arn` (`arn:aws:sts::<account>:assumed-role/<role>/<session>`), and the region from the `region` key. The configured-vs-actual region mismatch (e.g. logged into `us-east-1` while the config region is `us-west-2`) is now visible at a glance — the live region replaces the static one with the configured default moved to the tooltip, a `🔑 <account>` tag shows the authenticated account, and a role tag lets you confirm the right role authed. No new IPC, STS subprocess, or polling — the values ride the existing credentials-file watch and `expiries-changed` push event that already drives the expiry countdown. SAML-only by design: SSO and static-key profiles don't write a principal ARN to the credentials file and keep showing their configured region.
+
 ## [0.2.6] — 2026-04-15
 
 ### Added

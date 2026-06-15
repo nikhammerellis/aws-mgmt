@@ -269,6 +269,23 @@ body {
   color: #b5bff0;
 }
 
+/* Live session identity (parsed from an active saml2aws login) */
+.live-region-tag {
+  background: rgba(90, 170, 220, 0.2);
+  color: #9cd2f0;
+}
+
+.account-tag {
+  background: rgba(120, 130, 220, 0.18);
+  color: #b5bff0;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-role-tag {
+  background: rgba(180, 140, 220, 0.18);
+  color: #d6b8f0;
+}
+
 /* Expiry badges */
 .expiry-tag {
   font-variant-numeric: tabular-nums;
