@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { Header } from '../Header'
-import type { AwsProfile } from '../../types'
+import type { ActiveContext, AwsProfile } from '../../types'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -12,8 +12,22 @@ function makeProfile(over: Partial<AwsProfile> = {}): AwsProfile {
   return {
     name: 'dev',
     isActive: true,
+    isLive: true,
     region: 'us-west-2',
     hasCredentials: true,
+    ...over
+  }
+}
+
+function makeContext(over: Partial<ActiveContext> = {}): ActiveContext {
+  return {
+    liveProfiles: [],
+    staticProfiles: [],
+    shellProfile: null,
+    machineDefault: null,
+    contextProfile: null,
+    effective: null,
+    machineDefaultStale: false,
     ...over
   }
 }
@@ -87,6 +101,91 @@ describe('Header', () => {
       expect(screen.getByLabelText('Refresh').className).not.toMatch(/is-refreshing/)
       rerender(<Header activeProfile={null} onRefresh={vi.fn()} refreshing />)
       expect(screen.getByLabelText('Refresh').className).toMatch(/is-refreshing/)
+    })
+  })
+
+  // These branches had no coverage at all: every prior test omitted
+  // activeContext, so the whole live/stale/static header was untested.
+  describe('live vs selected', () => {
+    it('says "Live:" and marks the badge live when the profile holds a session', () => {
+      render(
+        <Header
+          activeProfile={makeProfile({ name: 'logistics', isLive: true })}
+          activeContext={makeContext({ liveProfiles: ['logistics'], effective: 'logistics' })}
+        />
+      )
+
+      expect(screen.getByText('Live:')).toBeInTheDocument()
+      expect(screen.getByLabelText('Live profile')).toBeInTheDocument()
+      expect(screen.queryByText('not logged in')).not.toBeInTheDocument()
+    })
+
+    it('says "Selected:" and warns when the chosen profile has no session', () => {
+      render(
+        <Header
+          activeProfile={makeProfile({ name: 'logistics', isLive: false })}
+          activeContext={makeContext({ liveProfiles: ['saml'], effective: 'logistics' })}
+        />
+      )
+
+      expect(screen.getByText('Selected:')).toBeInTheDocument()
+      expect(screen.getByText('not logged in')).toBeInTheDocument()
+      expect(screen.getByLabelText('Selected profile, not logged in')).toBeInTheDocument()
+    })
+
+    it('calls long-lived IAM keys static rather than "not logged in"', () => {
+      render(
+        <Header
+          activeProfile={makeProfile({ name: 'analytics-keys', isLive: false, isStatic: true })}
+          activeContext={makeContext({ staticProfiles: ['analytics-keys'], effective: 'analytics-keys' })}
+        />
+      )
+
+      expect(screen.getByText('static keys')).toBeInTheDocument()
+      expect(screen.queryByText('not logged in')).not.toBeInTheDocument()
+      expect(screen.getByLabelText('Selected profile, static IAM keys')).toBeInTheDocument()
+    })
+
+    it('counts the other live sessions after a fan-out login', () => {
+      render(
+        <Header
+          activeProfile={makeProfile({ name: 'logistics', isLive: true })}
+          activeContext={makeContext({
+            liveProfiles: ['logistics', 'logistics-prod', 'vision'],
+            effective: 'logistics'
+          })}
+        />
+      )
+
+      expect(screen.getByText('+2 more live')).toBeInTheDocument()
+    })
+
+    it('reports live sessions when none is selected', () => {
+      render(
+        <Header
+          activeProfile={null}
+          activeContext={makeContext({ liveProfiles: ['logistics', 'vision'] })}
+        />
+      )
+
+      expect(screen.getByText('2 live session(s), none selected')).toBeInTheDocument()
+      expect(screen.queryByText(/more live/)).not.toBeInTheDocument()
+    })
+
+    it('surfaces a stale machine default', () => {
+      render(
+        <Header
+          activeProfile={makeProfile({ name: 'logistics', isLive: true })}
+          activeContext={makeContext({
+            liveProfiles: ['logistics'],
+            machineDefault: 'default',
+            machineDefaultStale: true,
+            effective: 'logistics'
+          })}
+        />
+      )
+
+      expect(screen.getByText(/stale default:/)).toBeInTheDocument()
     })
   })
 })

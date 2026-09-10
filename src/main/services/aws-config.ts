@@ -19,6 +19,13 @@ export interface ConfigProfile {
    * than being inline on the profile.
    */
   sso_session?: string
+  /**
+   * App-owned extension key: the IAM role a SAML login should assume for this
+   * profile. Not an AWS CLI setting — the CLI ignores unknown keys. Stored
+   * here rather than as `role_arn` because a `role_arn` with no
+   * `source_profile` makes the CLI fail to resolve the profile entirely.
+   */
+  x_saml_role_arn?: string
 }
 
 export interface SsoSession {
@@ -45,7 +52,15 @@ const MANAGED_PROFILE_KEYS = [
   'sso_region',
   'sso_account_id',
   'sso_role_name',
-  'sso_session'
+  'sso_session',
+  // Not an AWS CLI key. saml2aws already writes `x_`-prefixed extension keys
+  // into ~/.aws/credentials (x_principal_arn, x_security_token_expires), so
+  // this follows an established convention in the same file family: the AWS
+  // CLI ignores keys it does not know, and the role stays next to the profile
+  // it belongs to rather than in a separate app-owned store. Storing it as a
+  // plain `role_arn` is NOT an option — that would make the CLI treat the
+  // profile as an assume-role profile with no source_profile, which errors.
+  'x_saml_role_arn'
 ] as const
 
 function profileToSection(name: string): string {
@@ -82,7 +97,8 @@ export async function readAwsConfig(): Promise<ConfigProfile[]> {
       sso_region: values.sso_region,
       sso_account_id: values.sso_account_id,
       sso_role_name: values.sso_role_name,
-      sso_session: values.sso_session
+      sso_session: values.sso_session,
+      x_saml_role_arn: values.x_saml_role_arn
     })
   }
 

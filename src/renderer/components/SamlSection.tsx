@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { SamlForm } from './SamlForm'
 import { ConfirmDialog } from './ConfirmDialog'
-import type { SamlProfile } from '../types'
+import type { AwsProfile, SamlProfile } from '../types'
+import { isFanOutProvider, pickIdentityProvider } from '../lib/login-action'
 import { effectiveAwsProfileName } from '../App'
 
 interface SamlSectionProps {
@@ -9,7 +10,7 @@ interface SamlSectionProps {
   loading: boolean
   error: string | null
   selectedName: string | null
-  awsProfileNames: Set<string>
+  awsProfiles: AwsProfile[]
   onSelect: (name: string | null) => void
   onAdd: (data: SamlProfile) => Promise<void>
   onUpdate: (name: string, data: SamlProfile) => Promise<void>
@@ -22,7 +23,7 @@ export function SamlSection({
   loading,
   error,
   selectedName,
-  awsProfileNames,
+  awsProfiles,
   onSelect,
   onAdd,
   onUpdate,
@@ -32,6 +33,21 @@ export function SamlSection({
   const [showForm, setShowForm] = useState(false)
   const [editingProfile, setEditingProfile] = useState<SamlProfile | null>(null)
   const [deletingName, setDeletingName] = useState<string | null>(null)
+
+  const awsProfileNames = useMemo(
+    () => new Set(awsProfiles.map((p) => p.name)),
+    [awsProfiles]
+  )
+
+  // Which AWS profiles would authenticate through each block. A block pinned
+  // to one profile (`aws_profile`, or its own `role_arn`) writes only there —
+  // that is the legacy one-slot shape. A block with no role of its own is an
+  // assertion source that any profile carrying a role ARN can log in through.
+  const provider = useMemo(() => pickIdentityProvider(profiles), [profiles])
+  const fanOutTargets = useMemo(
+    () => awsProfiles.filter((p) => !!p.samlRoleArn),
+    [awsProfiles]
+  )
 
   const handleSave = async (data: SamlProfile, isEdit: boolean) => {
     if (isEdit && editingProfile) {
@@ -63,24 +79,38 @@ export function SamlSection({
   return (
     <div className="saml-section">
       <div className="saml-header">
-        <h2>SAML Profiles</h2>
+        <div>
+          <h2>Identity Providers</h2>
+          <p className="saml-subtitle">
+            Blocks in <code>~/.saml2aws</code>. Each one is a way to authenticate — the AWS
+            account is decided by the profile you log in to, not by this file.
+          </p>
+        </div>
         <button className="btn btn-primary btn-sm" onClick={() => { setEditingProfile(null); setShowForm(true) }}>
-          + Add SAML Profile
+          + Add Identity Provider
         </button>
       </div>
       {error && <div className="error-banner">{error}</div>}
 
       {profiles.length === 0 ? (
         <div className="empty-state">
-          <p>No SAML profiles found</p>
-          <p className="text-muted">SAML profiles are stored in ~/.saml2aws</p>
+          <p>No identity providers found</p>
+          <p className="text-muted">
+            saml2aws stores these in ~/.saml2aws. Without one, profiles that authenticate by
+            SAML have no way to log in.
+          </p>
         </div>
       ) : (
         <div className="saml-grid">
           {profiles.map((profile) => {
-            const targetAws = effectiveAwsProfileName(profile)
-            const targetExists = awsProfileNames.has(targetAws)
-            const targetIsImplicit = !profile.awsProfile?.trim()
+            const fanOut = isFanOutProvider(profile)
+            // `aws_profile` names the section saml2aws writes to when no
+            // --profile flag is passed. Under the fan-out model the app always
+            // passes one, so this is a default rather than a destination.
+            const pinnedAws = effectiveAwsProfileName(profile)
+            const pinnedExists = awsProfileNames.has(pinnedAws)
+            const isPrimary = provider?.name === profile.name
+            const targets = fanOut && isPrimary ? fanOutTargets : []
 
             return (
               <div
@@ -102,24 +132,87 @@ export function SamlSection({
                 <div className="saml-card-meta">
                   {profile.provider && <span className="meta-tag">{profile.provider}</span>}
                   {profile.username && <span className="meta-tag">{profile.username}</span>}
-                  <button
-                    type="button"
-                    className={`meta-tag link-tag ${targetExists ? '' : 'missing'}`}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onNavigateToAws(targetAws)
-                    }}
+                  <span
+                    className={`meta-tag ${fanOut ? 'saml-mode-fanout' : 'saml-mode-pinned'}`}
                     title={
-                      targetExists
-                        ? `Open AWS profile "${targetAws}" — saml2aws will write its STS credentials here on login`
-                        : `AWS profile "${targetAws}" does not exist yet — saml2aws would create it on first login`
+                      fanOut
+                        ? 'No role_arn of its own, so it can mint a session in any account whose profile supplies a role. saml2aws caches the assertion, so extra accounts cost no extra browser prompt.'
+                        : 'role_arn is set here, so every login through this block assumes that one role. This is the single-slot behaviour.'
                     }
                   >
-                    → AWS: {targetAws}
-                    {targetIsImplicit && <span className="link-hint"> (default)</span>}
-                    {!targetExists && <span className="link-hint"> (missing)</span>}
-                  </button>
+                    {fanOut ? 'Fan-out' : 'Pinned to one role'}
+                  </span>
+                  {profile.awsSessionDuration && (
+                    <span
+                      className="meta-tag"
+                      title="Default session length requested when no per-profile duration is set"
+                    >
+                      {Math.floor(Number(profile.awsSessionDuration) / 3600) || '<1'}h default
+                    </span>
+                  )}
                 </div>
+
+                <div className="saml-card-targets">
+                  <div className="saml-targets-label">
+                    {fanOut ? 'Default write target' : 'Writes to'}
+                  </div>
+                  <button
+                    type="button"
+                    className={`meta-tag link-tag ${pinnedExists ? '' : 'missing'}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onNavigateToAws(pinnedAws)
+                    }}
+                    title={
+                      pinnedExists
+                        ? `Open AWS profile "${pinnedAws}" — where saml2aws writes when no --profile is given`
+                        : `AWS profile "${pinnedAws}" does not exist yet — saml2aws would create it on first login`
+                    }
+                  >
+                    → {pinnedAws}
+                    {!profile.awsProfile?.trim() && <span className="link-hint"> (default)</span>}
+                    {!pinnedExists && <span className="link-hint"> (missing)</span>}
+                  </button>
+
+                  {fanOut && isPrimary && (
+                    <>
+                      <div className="saml-targets-label">
+                        Profiles that can log in through this provider
+                        <span className="saml-targets-count">{targets.length}</span>
+                      </div>
+                      {targets.length === 0 ? (
+                        <p className="text-muted saml-targets-empty">
+                          None yet. A profile qualifies once it knows which role to assume —
+                          either from a previous saml2aws login, or from a role ARN set on the
+                          profile itself.
+                        </p>
+                      ) : (
+                        <div className="saml-target-list">
+                          {targets.map((target) => (
+                            <button
+                              key={target.name}
+                              type="button"
+                              className={`meta-tag link-tag ${target.isLive ? 'target-live' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                onNavigateToAws(target.name)
+                              }}
+                              title={`${target.samlRoleArn}\n\nRole ${
+                                target.samlRoleArnSource === 'config'
+                                  ? 'set on the profile'
+                                  : 'recovered from the last login'
+                              }${target.isLive ? '\nSession is live' : ''}`}
+                            >
+                              {target.isLive && <span className="target-dot" />}
+                              {target.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
                 {selectedName === profile.name && (
                   <div className="saml-card-details">
                     {profile.url && <div className="detail-row"><label>URL</label><span>{profile.url}</span></div>}
@@ -146,7 +239,7 @@ export function SamlSection({
 
       {deletingName && (
         <ConfirmDialog
-          title="Delete SAML Profile"
+          title="Delete Identity Provider"
           message={`Are you sure you want to delete "${deletingName}"? This will remove it from ~/.saml2aws.`}
           onConfirm={handleDelete}
           onCancel={() => setDeletingName(null)}

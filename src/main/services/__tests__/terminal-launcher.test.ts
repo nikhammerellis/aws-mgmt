@@ -316,3 +316,128 @@ describe('launchLoginInTerminal', () => {
     expect(mockSpawn.mock.calls[1][0]).toBe('powershell.exe')
   })
 })
+
+describe('launchLoginInTerminal — saml-role (fan-out)', () => {
+  const ROLE = 'arn:aws:iam::111111111111:role/Admin-Logistics'
+
+  function decodeLast(): string {
+    return decodeEncodedCommand(mockSpawn.mock.calls[0][1] as string[])
+  }
+
+  it('builds the full fan-out login command', async () => {
+    setPlatform('win32')
+    mockSpawn.mockReturnValue(makeChild() as unknown as ReturnType<typeof spawn>)
+
+    await launchLoginInTerminal({
+      kind: 'saml-role',
+      profileName: 'logistics',
+      samlSection: 'default',
+      roleArn: ROLE,
+      region: 'us-west-2',
+      sessionDuration: '28800'
+    })
+
+    expect(decodeLast()).toContain(
+      `saml2aws login -a default --profile logistics --role ${ROLE}` +
+        ' --region us-west-2 --session-duration 28800 --skip-prompt --force'
+    )
+  })
+
+  it('passes --skip-prompt because --role already answers the picker', async () => {
+    setPlatform('win32')
+    mockSpawn.mockReturnValue(makeChild() as unknown as ReturnType<typeof spawn>)
+
+    await launchLoginInTerminal({
+      kind: 'saml-role',
+      profileName: 'logistics',
+      samlSection: 'default',
+      roleArn: ROLE
+    })
+
+    const decoded = decodeLast()
+    expect(decoded).toContain('--skip-prompt')
+    // --force: without it, "Login" on a still-valid session appears to do
+    // nothing at all.
+    expect(decoded).toContain('--force')
+  })
+
+  it('omits region and duration when they are not known', async () => {
+    setPlatform('win32')
+    mockSpawn.mockReturnValue(makeChild() as unknown as ReturnType<typeof spawn>)
+
+    await launchLoginInTerminal({
+      kind: 'saml-role',
+      profileName: 'logistics',
+      samlSection: 'default',
+      roleArn: ROLE
+    })
+
+    const decoded = decodeLast()
+    expect(decoded).not.toContain('--region')
+    expect(decoded).not.toContain('--session-duration')
+  })
+
+  it('rejects a role ARN that is not one', async () => {
+    setPlatform('win32')
+    await expect(
+      launchLoginInTerminal({
+        kind: 'saml-role',
+        profileName: 'logistics',
+        samlSection: 'default',
+        roleArn: 'arn:aws:sts::111111111111:assumed-role/Role/user'
+      })
+    ).rejects.toThrow(/role ARN/i)
+    expect(mockSpawn).not.toHaveBeenCalled()
+  })
+
+  it('rejects a role ARN carrying shell metacharacters', async () => {
+    setPlatform('win32')
+    await expect(
+      launchLoginInTerminal({
+        kind: 'saml-role',
+        profileName: 'logistics',
+        samlSection: 'default',
+        roleArn: 'arn:aws:iam::111111111111:role/X; calc.exe'
+      })
+    ).rejects.toThrow(/role ARN/i)
+    expect(mockSpawn).not.toHaveBeenCalled()
+  })
+
+  it('rejects a bogus region and session duration', async () => {
+    setPlatform('win32')
+    await expect(
+      launchLoginInTerminal({
+        kind: 'saml-role',
+        profileName: 'logistics',
+        samlSection: 'default',
+        roleArn: ROLE,
+        region: 'us-west-2 && calc'
+      })
+    ).rejects.toThrow(/region/i)
+
+    await expect(
+      launchLoginInTerminal({
+        kind: 'saml-role',
+        profileName: 'logistics',
+        samlSection: 'default',
+        roleArn: ROLE,
+        sessionDuration: '8h'
+      })
+    ).rejects.toThrow(/session duration/i)
+
+    expect(mockSpawn).not.toHaveBeenCalled()
+  })
+
+  it('still requires a valid saml2aws section', async () => {
+    setPlatform('win32')
+    await expect(
+      launchLoginInTerminal({
+        kind: 'saml-role',
+        profileName: 'logistics',
+        samlSection: 'bad name',
+        roleArn: ROLE
+      })
+    ).rejects.toThrow(/saml2aws section/)
+    expect(mockSpawn).not.toHaveBeenCalled()
+  })
+})

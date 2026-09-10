@@ -6,7 +6,7 @@ import type { AwsProfile, ShellHint } from '../../types'
 
 const baseProfile: AwsProfile = {
   name: 'dev',
-  isActive: false,
+  isActive: false, isLive: false,
   region: 'us-west-2',
   hasCredentials: true
 }
@@ -47,6 +47,7 @@ function renderCard(opts: RenderOpts = {}) {
     isSelected: false,
     isFocused: false,
     samlSources: [],
+    samlProviders: [],
     shellHint: opts.shellHint ?? bashHint,
     expiry: opts.expiry ?? null,
     onSelect: vi.fn(),
@@ -137,13 +138,14 @@ describe('ProfileCard split-button', () => {
       <ProfileCard
         profile={{
           name: 'sso-dev',
-          isActive: false,
+          isActive: false, isLive: false,
           hasCredentials: false,
           ssoStartUrl: 'https://example.awsapps.com/start'
         }}
         isSelected={false}
         isFocused={false}
         samlSources={[]}
+        samlProviders={[]}
         shellHint={bashHint}
         expiry={null}
         onSelect={vi.fn()}
@@ -164,10 +166,11 @@ describe('ProfileCard split-button', () => {
     const onLogin = vi.fn()
     render(
       <ProfileCard
-        profile={{ name: 'work', isActive: false, hasCredentials: true }}
+        profile={{ name: 'work', isActive: false, isLive: false, hasCredentials: true }}
         isSelected={false}
         isFocused={false}
         samlSources={[{ name: 'work-okta', provider: 'Okta' }]}
+        samlProviders={[{ name: 'work-okta', provider: 'Okta' }]}
         shellHint={bashHint}
         expiry={null}
         onSelect={vi.fn()}

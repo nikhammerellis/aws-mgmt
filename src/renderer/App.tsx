@@ -31,6 +31,7 @@ export function effectiveAwsProfileName(saml: SamlProfile): string {
 export default function App() {
   const {
     profiles,
+    activeContext,
     loading,
     error,
     switchProfile,
@@ -98,7 +99,6 @@ export default function App() {
     return map
   }, [samlProfiles])
 
-  const awsProfileNames = useMemo(() => new Set(profiles.map((p) => p.name)), [profiles])
 
   const activeProfile = profiles.find((p) => p.isActive) || null
   const selectedProfile = selectedName
@@ -272,7 +272,7 @@ export default function App() {
         })
       }
       const sources = samlSourcesByAws.get(p.name) ?? []
-      const loginAction = getLoginAction(p, sources)
+      const loginAction = getLoginAction(p, sources, samlProfiles)
       if (loginAction.enabled && loginAction.payload) {
         actions.push({
           id: `login-${p.name}`,
@@ -321,7 +321,7 @@ export default function App() {
       })
     }
     return actions
-  }, [profiles, shellHint, samlSourcesByAws])
+  }, [profiles, shellHint, samlSourcesByAws, samlProfiles])
 
   // Global hotkeys
   useEffect(() => {
@@ -372,6 +372,7 @@ export default function App() {
     <div className="app">
       <Header
         activeProfile={activeProfile}
+        activeContext={activeContext}
         onRefresh={handleRefresh}
         refreshing={refreshing}
       />
@@ -399,6 +400,7 @@ export default function App() {
             loading={loading}
             selectedName={selectedProfile?.name || null}
             samlSourcesByAws={samlSourcesByAws}
+            samlProviders={samlProfiles}
             shellHint={shellHint}
             expiries={expiries}
             onSelect={(p) => setSelectedName(p.name)}
@@ -415,6 +417,7 @@ export default function App() {
             samlSources={
               selectedProfile ? samlSourcesByAws.get(selectedProfile.name) ?? [] : []
             }
+            samlProviders={samlProfiles}
             expiry={selectedProfile ? expiries.get(selectedProfile.name) ?? null : null}
             onEdit={handleEdit}
             onDelete={setDeletingName}
@@ -431,7 +434,7 @@ export default function App() {
             loading={samlLoading}
             error={samlError}
             selectedName={selectedSamlName}
-            awsProfileNames={awsProfileNames}
+            awsProfiles={profiles}
             onSelect={setSelectedSamlName}
             onAdd={addSamlProfile}
             onUpdate={updateSamlProfile}

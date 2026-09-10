@@ -6,6 +6,15 @@ const mockApi = {
   getAppVersion: vi.fn().mockResolvedValue('0.0.0-test'),
   getProfiles: vi.fn().mockResolvedValue([]),
   getActiveProfile: vi.fn().mockResolvedValue(null),
+  getActiveContext: vi.fn().mockResolvedValue({
+    liveProfiles: [],
+    staticProfiles: [],
+    shellProfile: null,
+    machineDefault: null,
+    contextProfile: null,
+    effective: null,
+    machineDefaultStale: false
+  }),
   switchProfile: vi.fn().mockResolvedValue({ persisted: true, mechanism: 'setx' }),
   addProfile: vi.fn().mockResolvedValue(undefined),
   updateProfile: vi.fn().mockResolvedValue(undefined),

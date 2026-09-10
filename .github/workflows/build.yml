@@ -17,6 +17,10 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
+      # Explicit step so a type error is distinguishable from a test failure in
+      # the CI log. `npm test` chains this too — neither ran before, which is
+      # how v0.2.7 shipped a TS2339 in terminal-launcher.ts.
+      - run: npm run typecheck
       - run: npm test
 
   build-windows:

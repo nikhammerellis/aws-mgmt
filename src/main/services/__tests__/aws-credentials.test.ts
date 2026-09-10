@@ -157,3 +157,44 @@ describe('deleteAwsCredential', () => {
     )
   })
 })
+
+describe('x_principal_arn — saml2aws login evidence', () => {
+  it('surfaces the assumed-role ARN saml2aws wrote', async () => {
+    mockReadIni.mockResolvedValue({
+      logistics: {
+        aws_access_key_id: 'ASIA_X',
+        aws_session_token: 'tok',
+        x_principal_arn:
+          'arn:aws:sts::111111111111:assumed-role/Admin-Logistics/user@example.com',
+        x_security_token_expires: '2026-09-09T16:15:15-07:00'
+      }
+    })
+
+    const [logistics] = await readAwsCredentials()
+    expect(logistics.x_principal_arn).toBe(
+      'arn:aws:sts::111111111111:assumed-role/Admin-Logistics/user@example.com'
+    )
+  })
+
+  it('leaves it undefined for a static-key section', async () => {
+    mockReadIni.mockResolvedValue({ 'legacy-static': { aws_access_key_id: 'AKIA_X' } })
+    const [entry] = await readAwsCredentials()
+    expect(entry.x_principal_arn).toBeUndefined()
+  })
+
+  it('does not write it back — it is preserved, not managed', async () => {
+    mockReadIni.mockResolvedValue({
+      logistics: { aws_access_key_id: 'OLD', x_principal_arn: 'arn:aws:sts::1:assumed-role/R/u' }
+    })
+
+    await writeAwsCredential({
+      name: 'logistics',
+      aws_access_key_id: 'NEW',
+      x_principal_arn: 'arn:aws:sts::999:assumed-role/Attacker/u'
+    })
+
+    const written = mockWriteIni.mock.calls[0][1] as Record<string, Record<string, string>>
+    expect(written.logistics.x_principal_arn).toBe('arn:aws:sts::1:assumed-role/R/u')
+    expect(written.logistics.aws_access_key_id).toBe('NEW')
+  })
+})

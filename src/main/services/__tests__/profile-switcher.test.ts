@@ -1,13 +1,37 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-const { mockExecFileAsync } = vi.hoisted(() => ({
-  mockExecFileAsync: vi.fn()
-}))
+const { mockExecFileAsync, mockWriteFile, mockRename, mockReadFile, mockUnlink } = vi.hoisted(
+  () => ({
+    mockExecFileAsync: vi.fn(),
+    mockWriteFile: vi.fn(),
+    mockRename: vi.fn(),
+    mockReadFile: vi.fn(),
+    mockUnlink: vi.fn()
+  })
+)
 
 vi.mock('child_process', () => ({ execFile: vi.fn() }))
 vi.mock('util', () => ({
   promisify: () => mockExecFileAsync
 }))
+// switchProfile now publishes ~/.aws/nmd-context.json. Without these mocks the
+// suite would write to the developer's real AWS directory.
+vi.mock('fs', () => ({
+  promises: {
+    readFile: mockReadFile,
+    writeFile: mockWriteFile,
+    rename: mockRename,
+    unlink: mockUnlink
+  }
+}))
+vi.mock('../file-watcher', () => ({ setWriteLock: vi.fn() }))
+vi.mock('../aws-credentials', () => ({ readAwsCredentials: vi.fn().mockResolvedValue([]) }))
+vi.mock('../expiry-tracker', () => ({ getProfileExpiries: vi.fn().mockResolvedValue([]) }))
+vi.mock('../../utils/paths', () => ({
+  getNmdContextPath: () => '/fake/.aws/nmd-context.json'
+}))
+
+import { dirname, normalize } from 'path'
 
 import { getActiveProfile, switchProfile, clearActiveProfile } from '../profile-switcher'
 
@@ -18,6 +42,10 @@ describe('profile-switcher', () => {
   beforeEach(() => {
     process.env = { ...originalEnv }
     vi.clearAllMocks()
+    mockReadFile.mockRejectedValue(new Error('ENOENT'))
+    mockWriteFile.mockResolvedValue(undefined)
+    mockRename.mockResolvedValue(undefined)
+    mockUnlink.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -93,6 +121,70 @@ describe('profile-switcher', () => {
       expect(result.mechanism).toBe('process-only')
       expect(result.note).toBeDefined()
       expect(result.note).toMatch(/shell rc/)
+    })
+
+    // getActiveContext ranks the context file above AWS_PROFILE, so without
+    // this write the app's own Switch could never move the app's own badge.
+    it('publishes the selection to the context file, written atomically', async () => {
+      Object.defineProperty(process, 'platform', { value: 'linux' })
+
+      await switchProfile('vision')
+
+      expect(mockWriteFile).toHaveBeenCalledTimes(1)
+      const [tmpPath, contents] = mockWriteFile.mock.calls[0]
+      // Temp file first, then renamed over the target. Same directory, or the
+      // rename crosses a filesystem boundary and stops being atomic.
+      expect(tmpPath).not.toBe('/fake/.aws/nmd-context.json')
+      expect(dirname(String(tmpPath))).toBe(normalize(dirname('/fake/.aws/nmd-context.json')))
+      expect(mockRename).toHaveBeenCalledWith(tmpPath, '/fake/.aws/nmd-context.json')
+
+      const written = JSON.parse(contents as string)
+      expect(written.profile).toBe('vision')
+      expect(typeof written.updatedAt).toBe('string')
+    })
+
+    it('carries the account metadata forward when the profile is unchanged', async () => {
+      Object.defineProperty(process, 'platform', { value: 'linux' })
+      mockReadFile.mockResolvedValue(
+        JSON.stringify({
+          profile: 'logistics',
+          client: 'logistics',
+          accountId: '111111111111',
+          region: 'us-west-2',
+          updatedAt: '2020-01-01T00:00:00.000Z'
+        })
+      )
+
+      await switchProfile('logistics')
+
+      const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string)
+      expect(written.accountId).toBe('111111111111')
+      expect(written.region).toBe('us-west-2')
+      expect(written.updatedAt).not.toBe('2020-01-01T00:00:00.000Z')
+    })
+
+    it('drops metadata describing a different account when the profile changes', async () => {
+      Object.defineProperty(process, 'platform', { value: 'linux' })
+      mockReadFile.mockResolvedValue(
+        JSON.stringify({ profile: 'logistics', accountId: '111111111111', region: 'us-west-2' })
+      )
+
+      await switchProfile('media')
+
+      const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string)
+      expect(written.profile).toBe('media')
+      expect(written.accountId).toBeUndefined()
+      expect(written.region).toBeUndefined()
+    })
+
+    it('still reports the env switch when the context file cannot be written', async () => {
+      Object.defineProperty(process, 'platform', { value: 'linux' })
+      mockWriteFile.mockRejectedValue(new Error('EACCES'))
+
+      const result = await switchProfile('dev')
+
+      expect(process.env.AWS_PROFILE).toBe('dev')
+      expect(result.mechanism).toBe('process-only')
     })
   })
 

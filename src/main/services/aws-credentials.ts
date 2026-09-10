@@ -7,6 +7,12 @@ export interface CredentialEntry {
   aws_access_key_id?: string
   aws_secret_access_key?: string
   aws_session_token?: string
+  /**
+   * Read-only. saml2aws writes the assumed-role ARN here after a successful
+   * login; the app reads it to recover which role this profile authenticates
+   * as. Never written by us — it is preserved, not managed.
+   */
+  x_principal_arn?: string
 }
 
 /**
@@ -29,7 +35,8 @@ export async function readAwsCredentials(): Promise<CredentialEntry[]> {
       name: section,
       aws_access_key_id: values.aws_access_key_id,
       aws_secret_access_key: values.aws_secret_access_key,
-      aws_session_token: values.aws_session_token
+      aws_session_token: values.aws_session_token,
+      x_principal_arn: values.x_principal_arn
     })
   }
 

@@ -1,6 +1,18 @@
 export interface AwsProfile {
   name: string
+  /**
+   * True for the one profile that best answers "which account am I in".
+   * Derived from ActiveContext.effective, NOT from AWS_PROFILE alone.
+   */
   isActive: boolean
+  /** True when this profile holds unexpired temporary credentials right now. */
+  isLive: boolean
+  /**
+   * True for long-lived IAM keys — credentials with no expiry at all. Such a
+   * profile can never be `isLive`, so without this the UI would report it as
+   * "not logged in" forever and offer a login that does not apply to it.
+   */
+  isStatic?: boolean
   // From config
   region?: string
   output?: string
@@ -16,6 +28,15 @@ export interface AwsProfile {
   /** Resolved from the referenced sso-session block (if any), for UX only. */
   ssoSessionStartUrl?: string
   ssoSessionRegion?: string
+  /**
+   * The IAM role a SAML login should assume for this profile. Either read from
+   * `x_saml_role_arn` in ~/.aws/config (an explicit override the user typed) or
+   * recovered from the `x_principal_arn` saml2aws wrote after the last login.
+   * Absent for profiles that have never authenticated and have no override.
+   */
+  samlRoleArn?: string
+  /** Where `samlRoleArn` came from, so the UI can say so honestly. */
+  samlRoleArnSource?: 'config' | 'derived'
   // From credentials
   hasCredentials: boolean
   accessKeyId?: string
@@ -39,6 +60,8 @@ export interface NewProfileData {
   ssoRegion?: string
   ssoAccountId?: string
   ssoRoleName?: string
+  /** Override for the role a SAML login assumes. Written as `x_saml_role_arn`. */
+  samlRoleArn?: string
 }
 
 export interface ProfileTestSuccess {
@@ -61,6 +84,32 @@ export interface LoginVerification {
   result: ProfileTestResult
 }
 
+/**
+ * The honest answer to "which AWS account am I in".
+ *
+ * Several profiles can hold live credentials at once (one SAML authentication
+ * can mint sessions in every client account), so a single string cannot be
+ * correct. These fields are deliberately separate because they disagree in
+ * normal use, and conflating them is what made the header report "default"
+ * while the real session lived on another profile.
+ */
+export interface ActiveContext {
+  /** Profiles holding unexpired temporary credentials, soonest-expiring first. */
+  liveProfiles: string[]
+  /** Profiles backed by long-lived IAM keys, which never expire and never "log in". */
+  staticProfiles: string[]
+  /** What this app's own process environment points at. */
+  shellProfile: string | null
+  /** The persisted OS-level value (HKCU\Environment on Windows, launchctl on macOS). */
+  machineDefault: string | null
+  /** Profile recorded in ~/.aws/nmd-context.json by the awsgo/awsuse commands. */
+  contextProfile: string | null
+  /** Single best answer: contextProfile if live, else the sole live profile, else shellProfile. */
+  effective: string | null
+  /** True when machineDefault names a profile with no live credentials. */
+  machineDefaultStale: boolean
+}
+
 export interface SwitchResult {
   /** True if the change persists across new shells. False on Linux. */
   persisted: boolean
@@ -71,9 +120,23 @@ export interface SwitchResult {
 }
 
 export interface LaunchLoginPayload {
-  kind: 'sso' | 'saml-target'
+  /**
+   * - `sso`          — `aws sso login --profile X`
+   * - `saml-target`  — legacy: a ~/.saml2aws section pinned to one AWS profile.
+   *                   This is the `awslogin` shape and is left alone.
+   * - `saml-role`    — an identity provider fanning out: the IdP block supplies
+   *                   the assertion, the AWS profile supplies the role. One
+   *                   authentication can mint sessions in many accounts.
+   */
+  kind: 'sso' | 'saml-target' | 'saml-role'
   profileName: string
   samlSection?: string
+  /** `saml-role` only: the IAM role ARN to assume. Validated at the boundary. */
+  roleArn?: string
+  /** `saml-role` only: region to pass through, so multi-region setups land right. */
+  region?: string
+  /** `saml-role` only: requested session length in seconds. */
+  sessionDuration?: string
   /**
    * True when the SAML profile has `role_arn` set in ~/.saml2aws. Drives
    * whether the launcher appends `--skip-prompt` to the saml2aws command.
@@ -156,6 +219,7 @@ export interface ElectronAPI {
   getProfiles(): Promise<AwsProfile[]>
   getAppVersion(): Promise<string>
   getActiveProfile(): Promise<string | null>
+  getActiveContext(): Promise<ActiveContext>
   switchProfile(name: string): Promise<SwitchResult>
   addProfile(data: NewProfileData): Promise<void>
   updateProfile(name: string, data: NewProfileData): Promise<void>

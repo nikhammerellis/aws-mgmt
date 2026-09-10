@@ -7,7 +7,7 @@ import {
 } from './services/aws-config'
 import { readAwsCredentials, writeAwsCredential, deleteAwsCredential } from './services/aws-credentials'
 import { readSamlConfig, writeSamlProfile, deleteSamlProfile } from './services/saml-config'
-import { getActiveProfile, switchProfile } from './services/profile-switcher'
+import { getActiveContext, switchProfile } from './services/profile-switcher'
 import { setWriteLock } from './services/file-watcher'
 import { getRenameImpact, renameProfile } from './services/profile-rename'
 import {
@@ -19,8 +19,13 @@ import {
 import { testProfile } from './services/profile-tester'
 import { getProfileExpiries } from './services/expiry-tracker'
 import { trackPendingLogin } from './services/login-verifier'
-import { assertValidProfileName } from '../shared/validation'
-import type { AwsProfile, NewProfileData, RenameOptions, SamlProfile, SwitchResult } from '../renderer/types'
+import {
+  assertValidProfileName,
+  assertValidRoleArn,
+  iamRoleArnFromPrincipalArn,
+  isValidRoleArn
+} from '../shared/validation'
+import type { ActiveContext, AwsProfile, NewProfileData, RenameOptions, SamlProfile, SwitchResult } from '../renderer/types'
 
 /**
  * Sanity-check every string field of an incoming profile payload that
@@ -48,6 +53,12 @@ export function validateProfileData(data: NewProfileData): void {
     if (key === 'name') continue
     assertSafeIniValue(value, `profile field "${key}"`)
   }
+  // Stricter than the INI check above: this value is later interpolated into
+  // a `saml2aws login --role ...` command line, so it must be an ARN and not
+  // merely free of INI metacharacters.
+  if (data.samlRoleArn !== undefined && data.samlRoleArn !== '') {
+    assertValidRoleArn(data.samlRoleArn, 'SAML role ARN')
+  }
 }
 
 export function validateSamlProfile(data: SamlProfile): void {
@@ -71,12 +82,18 @@ export function registerIpcHandlers(): void {
   // --- AWS Profiles ---
 
   ipcMain.handle('get-profiles', async (): Promise<AwsProfile[]> => {
-    const [configProfiles, ssoSessions, credentials, activeProfile] = await Promise.all([
+    const [configProfiles, ssoSessions, credentials, context] = await Promise.all([
       readAwsConfig(),
       readSsoSessions(),
       readAwsCredentials(),
-      getActiveProfile()
+      getActiveContext()
     ])
+    // "Active" is the profile that best answers which account we are in, not
+    // whatever AWS_PROFILE happens to say. "Live" is per-profile and is true
+    // for several at once after a one-authentication fan-out login.
+    const activeProfile = context.effective
+    const liveProfiles = new Set(context.liveProfiles)
+    const staticProfiles = new Set(context.staticProfiles)
 
     const credMap = new Map(credentials.map((c) => [c.name, c]))
     const sessionMap = new Map(ssoSessions.map((s) => [s.name, s]))
@@ -92,9 +109,21 @@ export function registerIpcHandlers(): void {
       const cred = credMap.get(name)
       const session = config?.sso_session ? sessionMap.get(config.sso_session) : undefined
 
+      // An explicit override always wins; otherwise recover the role from the
+      // assumed-role ARN saml2aws left behind on the last successful login.
+      // That derivation is what gives a working Login button to profiles the
+      // app knows nothing else about.
+      const configuredRole = config?.x_saml_role_arn?.trim()
+      const derivedRole = iamRoleArnFromPrincipalArn(cred?.x_principal_arn)
+      const samlRoleArn = isValidRoleArn(configuredRole)
+        ? configuredRole
+        : derivedRole ?? undefined
+
       profiles.push({
         name,
         isActive: name === activeProfile,
+        isLive: liveProfiles.has(name),
+        isStatic: staticProfiles.has(name),
         region: config?.region,
         output: config?.output,
         sessionDuration: config?.session_duration,
@@ -107,6 +136,12 @@ export function registerIpcHandlers(): void {
         ssoSession: config?.sso_session,
         ssoSessionStartUrl: session?.sso_start_url,
         ssoSessionRegion: session?.sso_region,
+        samlRoleArn,
+        samlRoleArnSource: samlRoleArn
+          ? isValidRoleArn(configuredRole)
+            ? 'config'
+            : 'derived'
+          : undefined,
         hasCredentials: !!(cred?.aws_access_key_id),
         accessKeyId: cred?.aws_access_key_id,
         secretAccessKey: cred?.aws_secret_access_key,
@@ -114,11 +149,12 @@ export function registerIpcHandlers(): void {
       })
     }
 
+    // A stable base order only. The list view re-groups these by session state
+    // (live / expired / static / other) — `default` used to be pinned first
+    // here, which floated an empty, credential-less section above live
+    // sessions and is exactly the sprawl the grouping exists to fix.
     profiles.sort((a, b) => {
-      if (a.name === 'default') return -1
-      if (b.name === 'default') return 1
-      if (a.isActive && !b.isActive) return -1
-      if (!a.isActive && b.isActive) return 1
+      if (a.isActive !== b.isActive) return a.isActive ? -1 : 1
       return a.name.localeCompare(b.name)
     })
 
@@ -126,7 +162,11 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('get-active-profile', async (): Promise<string | null> => {
-    return getActiveProfile()
+    return (await getActiveContext()).effective
+  })
+
+  ipcMain.handle('get-active-context', async (): Promise<ActiveContext> => {
+    return getActiveContext()
   })
 
   ipcMain.handle('switch-profile', async (_event, name: string): Promise<SwitchResult> => {
@@ -149,7 +189,8 @@ export function registerIpcHandlers(): void {
       sso_start_url: data.ssoStartUrl,
       sso_region: data.ssoRegion,
       sso_account_id: data.ssoAccountId,
-      sso_role_name: data.ssoRoleName
+      sso_role_name: data.ssoRoleName,
+      x_saml_role_arn: data.samlRoleArn
     })
     if (data.accessKeyId || data.secretAccessKey) {
       await writeAwsCredential({
@@ -175,7 +216,8 @@ export function registerIpcHandlers(): void {
       sso_start_url: data.ssoStartUrl,
       sso_region: data.ssoRegion,
       sso_account_id: data.ssoAccountId,
-      sso_role_name: data.ssoRoleName
+      sso_role_name: data.ssoRoleName,
+      x_saml_role_arn: data.samlRoleArn
     })
     // Always call writeAwsCredential so the merge semantics can CLEAR stale
     // IAM keys when the user converts a profile to SSO/SAML/assume-role.
@@ -225,8 +267,18 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('launch-login', async (_event, payload: LaunchLoginPayload): Promise<void> => {
     assertValidProfileName(payload?.profileName)
-    if (payload?.kind === 'saml-target') {
+    if (payload?.kind === 'saml-target' || payload?.kind === 'saml-role') {
       assertValidProfileName(payload.samlSection, 'saml2aws section')
+    }
+    if (payload?.kind === 'saml-role') {
+      // These three reach a spawned command line verbatim.
+      assertValidRoleArn(payload.roleArn)
+      if (payload.region !== undefined && !/^[a-z0-9-]{1,32}$/.test(payload.region)) {
+        throw new Error('Invalid launch-login payload: region')
+      }
+      if (payload.sessionDuration !== undefined && !/^\d{1,6}$/.test(payload.sessionDuration)) {
+        throw new Error('Invalid launch-login payload: sessionDuration')
+      }
     }
     // hasRoleArn is optional; when present it must be a real boolean.
     // Defense-in-depth against a compromised renderer smuggling a string

@@ -22,6 +22,7 @@ const api: ElectronAPI = {
   // AWS Profiles
   getProfiles: () => ipcRenderer.invoke('get-profiles'),
   getActiveProfile: () => ipcRenderer.invoke('get-active-profile'),
+  getActiveContext: () => ipcRenderer.invoke('get-active-context'),
   switchProfile: (name: string) => ipcRenderer.invoke('switch-profile', name),
   addProfile: (data: NewProfileData) => ipcRenderer.invoke('add-profile', data),
   updateProfile: (name: string, data: NewProfileData) =>

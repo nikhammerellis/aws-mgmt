@@ -1,20 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { ProfileWizard } from '../ProfileWizard'
-import type { AwsProfile } from '../../types'
+import type { AwsProfile, NewProfileData } from '../../types'
 
 const existingNames: string[] = ['default', 'dev']
 
 interface Options {
   mode?: 'add' | 'edit' | 'clone'
   profile?: AwsProfile | null
-  onSave?: ReturnType<typeof vi.fn>
+  onSave?: (data: NewProfileData, isEdit: boolean) => Promise<void>
   onCancel?: () => void
 }
 
 function renderWizard(opts: Options = {}) {
-  const onSave = opts.onSave ?? vi.fn().mockResolvedValue(undefined)
-  const onCancel = opts.onCancel ?? vi.fn()
+  const onSave = opts.onSave ?? vi.fn(async () => {})
+  const onCancel = opts.onCancel ?? vi.fn(() => {})
   const props = {
     mode: opts.mode ?? 'add',
     profile: opts.profile ?? null,
@@ -132,7 +132,7 @@ describe('ProfileWizard add flow', () => {
 describe('ProfileWizard edit flow', () => {
   const editProfile: AwsProfile = {
     name: 'dev',
-    isActive: false,
+    isActive: false, isLive: false,
     region: 'us-west-2',
     output: 'json',
     hasCredentials: true,
@@ -178,7 +178,7 @@ describe('ProfileWizard edit flow', () => {
 describe('ProfileWizard clone flow', () => {
   const source: AwsProfile = {
     name: 'dev',
-    isActive: false,
+    isActive: false, isLive: false,
     region: 'us-west-2',
     output: 'json',
     roleArn: 'arn:aws:iam::1:role/Dev',

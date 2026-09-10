@@ -1,6 +1,11 @@
 import chokidar, { type FSWatcher } from 'chokidar'
 import { BrowserWindow } from 'electron'
-import { getAwsConfigPath, getAwsCredentialsPath, getSamlConfigPath } from '../utils/paths'
+import {
+  getAwsConfigPath,
+  getAwsCredentialsPath,
+  getNmdContextPath,
+  getSamlConfigPath
+} from '../utils/paths'
 import { getPendingLogins, verifyLogin } from './login-verifier'
 
 /**
@@ -31,8 +36,9 @@ export function startFileWatchers(): void {
   const configPath = getAwsConfigPath()
   const credsPath = getAwsCredentialsPath()
   const samlPath = getSamlConfigPath()
+  const contextPath = getNmdContextPath()
 
-  watcher = chokidar.watch([configPath, credsPath, samlPath], {
+  watcher = chokidar.watch([configPath, credsPath, samlPath, contextPath], {
     ignoreInitial: true,
     followSymlinks: false,
     awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
@@ -49,6 +55,13 @@ export function startFileWatchers(): void {
       debouncedBroadcast('expiries-changed', 'aws-file')
     } else if (path === samlPath) {
       debouncedNotify('saml-changed', { verifyPendingLogins: false })
+    } else if (path === contextPath) {
+      // `awsuse <profile>` writes only this file — no config or credentials
+      // change accompanies it. Without this branch the app kept naming the
+      // profile the user had just switched away from until the 60s tray tick.
+      // It changes which profile is "active", so the profile list needs it too.
+      debouncedNotify('profiles-changed', { verifyPendingLogins: false })
+      debouncedBroadcast('expiries-changed', 'context-file')
     }
   })
 

@@ -4,37 +4,37 @@ import { CommandPalette, type CommandPaletteAction } from '../CommandPalette'
 import type { AwsProfile } from '../../types'
 
 const profiles: AwsProfile[] = [
-  { name: 'default', isActive: true, hasCredentials: true },
-  { name: 'dev', isActive: false, hasCredentials: true }
+  { name: 'default', isActive: true, isLive: true, hasCredentials: true },
+  { name: 'dev', isActive: false, isLive: false, hasCredentials: true }
 ]
 
-function makeActions(runs: Record<string, ReturnType<typeof vi.fn>> = {}): CommandPaletteAction[] {
+function makeActions(runs: Record<string, () => void> = {}): CommandPaletteAction[] {
   return [
     {
       id: 'switch-dev',
       label: 'Switch to dev',
       group: 'Switch profile',
       hint: 'us-west-2',
-      run: runs['switch-dev'] ?? vi.fn()
+      run: runs['switch-dev'] ?? vi.fn(() => {})
     },
     {
       id: 'copy-dev',
       label: 'Copy export for dev',
       group: 'Terminal',
-      run: runs['copy-dev'] ?? vi.fn()
+      run: runs['copy-dev'] ?? vi.fn(() => {})
     },
     {
       id: 'rename-dev',
       label: 'Rename dev',
       group: 'Manage profile',
-      run: runs['rename-dev'] ?? vi.fn()
+      run: runs['rename-dev'] ?? vi.fn(() => {})
     },
     {
       id: 'delete-dev',
       label: 'Delete dev',
       group: 'Manage profile',
       disabled: true,
-      run: runs['delete-dev'] ?? vi.fn()
+      run: runs['delete-dev'] ?? vi.fn(() => {})
     }
   ]
 }

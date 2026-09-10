@@ -1,7 +1,7 @@
 import { Tray, Menu, nativeImage, BrowserWindow, app } from 'electron'
 import { join } from 'path'
 import { readAwsConfig } from './aws-config'
-import { getActiveProfile, switchProfile } from './profile-switcher'
+import { getActiveContext, switchProfile } from './profile-switcher'
 import { getProfileExpiries } from './expiry-tracker'
 
 /**
@@ -86,26 +86,54 @@ export async function updateTrayMenu(getWindow: () => BrowserWindow | null): Pro
   let activeLabel = 'AWS Profile Manager — no active profile'
 
   try {
-    const [configs, activeProfile, expiries] = await Promise.all([
+    const [configs, context, expiries] = await Promise.all([
       readAwsConfig(),
-      getActiveProfile(),
+      getActiveContext(),
       getProfileExpiries().catch(() => [])
     ])
+    const liveProfiles = new Set(context.liveProfiles)
+    const staticProfiles = new Set(context.staticProfiles)
+    // `effective` can name a profile with no config section — a stale env var,
+    // or a credentials-only section. Don't advertise one we can't describe or
+    // check a radio item for; the "none selected" branch is the honest answer.
+    const activeProfile =
+      context.effective && configs.some((c) => c.name === context.effective)
+        ? context.effective
+        : null
 
     if (activeProfile) {
       const activeConfig = configs.find((c) => c.name === activeProfile)
-      const region = activeConfig?.region ?? 'no region'
       const activeExpiry = expiries.find((e) => e.profileName === activeProfile)
+      // Prefer the live session's own region over the configured one — they
+      // differ whenever a profile is authenticated into another region.
+      const region = activeExpiry?.region ?? activeConfig?.region ?? 'no region'
       let expirySuffix = ''
       if (activeExpiry) {
         const remaining = new Date(activeExpiry.expiresAt).getTime() - Date.now()
         expirySuffix = ` · ${formatRemaining(remaining)}`
       }
+      // Say so out loud when the selected profile holds no live credentials,
+      // rather than presenting a dead profile as if it were authenticated.
+      // Long-lived IAM keys are the exception: they never expire, so "not
+      // logged in" would be false and the login it implies does not exist.
+      if (!liveProfiles.has(activeProfile)) {
+        expirySuffix = staticProfiles.has(activeProfile) ? ' · static keys' : ' · not logged in'
+      }
       activeLabel = `AWS: ${activeProfile} · ${region}${expirySuffix}`
+      // Count the OTHER live sessions — the selected profile only discounts
+      // itself when it is one of them.
+      const otherLive = liveProfiles.size - (liveProfiles.has(activeProfile) ? 1 : 0)
+      if (otherLive > 0) {
+        activeLabel += ` (+${otherLive} more live)`
+      }
+    } else if (liveProfiles.size > 0) {
+      activeLabel = `AWS: ${liveProfiles.size} live session(s), none selected`
     }
 
     profileItems = configs.map((p) => ({
-      label: p.name,
+      // A dot marks profiles holding live credentials, so the menu reflects
+      // what is usable right now rather than only what is configured.
+      label: liveProfiles.has(p.name) ? `● ${p.name}` : p.name,
       type: 'radio' as const,
       checked: p.name === activeProfile,
       click: async () => {

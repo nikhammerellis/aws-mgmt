@@ -80,3 +80,62 @@ export function stripAwsOverrides(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   delete clean.AWS_PROFILE
   return clean
 }
+
+/**
+ * An IAM role ARN, as `saml2aws login --role` expects it.
+ *
+ * Deliberately narrower than the ARN grammar: partition and account are
+ * fixed-shape, and the role name uses IAM's documented character class
+ * (`\w+=,.@-`) plus `/` for role paths. That excludes every shell
+ * metacharacter and every INI-injection character, which matters because
+ * this value is interpolated into a command line handed to a terminal.
+ *
+ * PROFILE_NAME_PATTERN cannot be reused here — it rejects `:` and `/`, which
+ * every ARN contains.
+ */
+export const ROLE_ARN_PATTERN =
+  /^arn:aws(-cn|-us-gov|-iso[a-z-]*)?:iam::\d{12}:role\/[\w+=,.@-]+(\/[\w+=,.@-]+)*$/
+
+export function isValidRoleArn(arn: unknown): arn is string {
+  return typeof arn === 'string' && arn.length <= 2048 && ROLE_ARN_PATTERN.test(arn)
+}
+
+/**
+ * Throws unless `arn` is an IAM role ARN. Use at IPC boundaries — the renderer
+ * is untrusted, and this value reaches a spawned terminal command.
+ */
+export function assertValidRoleArn(arn: unknown, label: string = 'role ARN'): asserts arn is string {
+  if (!isValidRoleArn(arn)) {
+    throw new Error(
+      `Invalid ${label}: expected an IAM role ARN such as arn:aws:iam::123456789012:role/MyRole`
+    )
+  }
+}
+
+/**
+ * Recover the IAM role ARN from the assumed-role ARN that saml2aws records as
+ * `x_principal_arn` in ~/.aws/credentials after a successful login:
+ *
+ *   arn:aws:sts::123456789012:assumed-role/MyRole/user@example.com
+ *   → arn:aws:iam::123456789012:role/MyRole
+ *
+ * This is what lets the app offer a one-click re-login for any profile that
+ * has authenticated once, in any saml2aws setup, without knowing anything
+ * about how the user names or organises their accounts.
+ *
+ * Caveat worth knowing: STS drops the role's *path* from an assumed-role ARN,
+ * so a role at `/team/MyRole` round-trips to `/MyRole`. That case needs the
+ * explicit override rather than the derived value — which is why the override
+ * exists.
+ */
+export function iamRoleArnFromPrincipalArn(principalArn: unknown): string | null {
+  if (typeof principalArn !== 'string') return null
+  const match =
+    /^arn:(aws(?:-cn|-us-gov|-iso[a-z-]*)?):sts::(\d{12}):assumed-role\/([\w+=,.@-]+)\//.exec(
+      principalArn
+    )
+  if (!match) return null
+  const [, partition, account, roleName] = match
+  const derived = `arn:${partition}:iam::${account}:role/${roleName}`
+  return isValidRoleArn(derived) ? derived : null
+}

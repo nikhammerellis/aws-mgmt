@@ -16,3 +16,13 @@ export function getSamlConfigPath(): string {
 export function getSsoCacheDir(): string {
   return join(homedir(), '.aws', 'sso', 'cache')
 }
+
+/**
+ * The context file written by the awsgo/awsuse PowerShell commands
+ * (~/.aws/nmd-context.json). It records which profile the operator last
+ * switched to, which is information no environment variable can carry
+ * across process boundaries.
+ */
+export function getNmdContextPath(): string {
+  return process.env.NMD_AWS_CONTEXT_FILE || join(homedir(), '.aws', 'nmd-context.json')
+}

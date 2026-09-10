@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "target": "ESNext",
@@ -18,6 +19,8 @@
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
     "src/shared/**/*.ts",
+    "src/renderer/types/**/*.ts",
+    "types/**/*.d.ts",
     "electron.vite.config.ts"
   ]
 }

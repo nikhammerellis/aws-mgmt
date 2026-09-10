@@ -113,3 +113,35 @@ describe('validateSamlProfile', () => {
     ).not.toThrow()
   })
 })
+
+describe('validateProfileData — SAML role override', () => {
+  const base = { name: 'logistics', region: 'us-west-2' }
+
+  it('accepts an absent or empty override', () => {
+    expect(() => validateProfileData({ ...base })).not.toThrow()
+    expect(() => validateProfileData({ ...base, samlRoleArn: '' })).not.toThrow()
+  })
+
+  it('accepts a real IAM role ARN', () => {
+    expect(() =>
+      validateProfileData({
+        ...base,
+        samlRoleArn: 'arn:aws:iam::111111111111:role/Admin-Logistics'
+      })
+    ).not.toThrow()
+  })
+
+  it('rejects anything that is not a role ARN', () => {
+    // The INI check alone would pass all of these — none contains [ ] = or a
+    // newline — yet each would land verbatim in a saml2aws command line.
+    for (const bad of [
+      'not-an-arn',
+      'arn:aws:sts::111111111111:assumed-role/Role/user',
+      'arn:aws:iam::123:role/TooShortAccount',
+      'arn:aws:iam::111111111111:role/x; calc.exe',
+      'arn:aws:iam::111111111111:role/x`whoami`'
+    ]) {
+      expect(() => validateProfileData({ ...base, samlRoleArn: bad })).toThrow(/SAML role ARN/)
+    }
+  })
+})

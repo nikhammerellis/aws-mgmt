@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { AwsProfile, NewProfileData, ProfileKind } from '../types'
 import { AWS_REGIONS, OUTPUT_FORMATS } from '../lib/aws-regions'
-import { PROFILE_NAME_PATTERN } from '../../shared/validation'
+import { PROFILE_NAME_PATTERN, ROLE_ARN_PATTERN } from '../../shared/validation'
 
 type WizardMode = 'add' | 'edit' | 'clone'
 
@@ -68,6 +68,7 @@ interface FormState {
   ssoRegion: string
   ssoAccountId: string
   ssoRoleName: string
+  samlRoleArn: string
 }
 
 const EMPTY_FORM: FormState = {
@@ -83,7 +84,8 @@ const EMPTY_FORM: FormState = {
   ssoStartUrl: '',
   ssoRegion: '',
   ssoAccountId: '',
-  ssoRoleName: ''
+  ssoRoleName: '',
+  samlRoleArn: ''
 }
 
 function profileToForm(profile: AwsProfile | null | undefined, suffix: string = ''): FormState {
@@ -101,7 +103,11 @@ function profileToForm(profile: AwsProfile | null | undefined, suffix: string = 
     ssoStartUrl: profile.ssoStartUrl ?? '',
     ssoRegion: profile.ssoRegion ?? '',
     ssoAccountId: profile.ssoAccountId ?? '',
-    ssoRoleName: profile.ssoRoleName ?? ''
+    ssoRoleName: profile.ssoRoleName ?? '',
+    // Only pre-fill an override the user actually set. A derived role is shown
+    // as placeholder text instead — pre-filling it would silently promote a
+    // guess into a stored value on the next save.
+    samlRoleArn: profile.samlRoleArnSource === 'config' ? profile.samlRoleArn ?? '' : ''
   }
 }
 
@@ -124,7 +130,8 @@ function formToPayload(form: FormState): NewProfileData {
     ssoStartUrl: form.ssoStartUrl || undefined,
     ssoRegion: form.ssoRegion || undefined,
     ssoAccountId: form.ssoAccountId || undefined,
-    ssoRoleName: form.ssoRoleName || undefined
+    ssoRoleName: form.ssoRoleName || undefined,
+    samlRoleArn: form.samlRoleArn.trim() || undefined
   }
 }
 
@@ -140,6 +147,7 @@ const FIELD_LABELS: Partial<Record<keyof FormState, string>> = {
   output: 'Output',
   sessionDuration: 'Session duration',
   roleArn: 'Role ARN',
+  samlRoleArn: 'SAML role ARN',
   sourceProfile: 'Source profile',
   accessKeyId: 'Access Key ID',
   secretAccessKey: 'Secret Access Key',
@@ -213,6 +221,11 @@ function validate(
   if (kind === 'assume-role') {
     if (!form.roleArn.trim()) errors.push('Role ARN is required for assume-role profiles.')
     if (!form.sourceProfile.trim()) errors.push('Source profile is required for assume-role profiles.')
+  }
+  // Optional, but if given it must be an ARN — the value reaches a
+  // `saml2aws login --role` command line.
+  if (form.samlRoleArn.trim() && !ROLE_ARN_PATTERN.test(form.samlRoleArn.trim())) {
+    errors.push('SAML role ARN must look like arn:aws:iam::123456789012:role/MyRole.')
   }
 
   return { ok: errors.length === 0, errors }
@@ -329,6 +342,9 @@ export function ProfileWizard({
             isEdit={isEdit}
             onUpdate={update}
             errors={validation.errors}
+            derivedRoleArn={
+              profile?.samlRoleArnSource === 'derived' ? profile.samlRoleArn : undefined
+            }
           />
         )}
 
@@ -412,10 +428,12 @@ interface KindFormProps {
   form: FormState
   isEdit: boolean
   errors: string[]
+  /** Role recovered from the last login, shown as placeholder guidance only. */
+  derivedRoleArn?: string
   onUpdate: <K extends keyof FormState>(key: K, value: FormState[K]) => void
 }
 
-function KindForm({ kind, form, isEdit, errors, onUpdate }: KindFormProps) {
+function KindForm({ kind, form, isEdit, errors, derivedRoleArn, onUpdate }: KindFormProps) {
   return (
     <>
       <div className="form-section">
@@ -604,8 +622,26 @@ function KindForm({ kind, form, isEdit, errors, onUpdate }: KindFormProps) {
         <div className="form-section">
           <h3>SAML2AWS Target</h3>
           <p className="wizard-helper">
-            No additional fields needed — saml2aws will populate credentials on login.
+            saml2aws populates the credentials on login. Set a role below to make this
+            profile loggable in one click; leave it blank to pick the role interactively.
           </p>
+          <div className="form-field">
+            <label htmlFor="wizard-saml-role">
+              SAML role ARN <span className="optional-marker">(optional)</span>
+            </label>
+            <input
+              id="wizard-saml-role"
+              type="text"
+              value={form.samlRoleArn}
+              onChange={(e) => onUpdate('samlRoleArn', e.target.value)}
+              placeholder={derivedRoleArn ?? 'arn:aws:iam::123456789012:role/MyRole'}
+            />
+            <p className="wizard-helper">
+              {derivedRoleArn
+                ? 'Recovered from the last successful login. Set it explicitly only to override that — for example when the role sits under a path, which the recovered value cannot represent.'
+                : 'The role this profile assumes. Stored as x_saml_role_arn, which the AWS CLI ignores.'}
+            </p>
+          </div>
         </div>
       )}
 

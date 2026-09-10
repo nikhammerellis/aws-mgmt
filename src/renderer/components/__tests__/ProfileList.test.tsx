@@ -5,15 +5,16 @@ import type { AwsProfile, SamlProfile } from '../../types'
 import type { ExpiryStatus } from '../../hooks/useProfileExpiries'
 
 const profiles: AwsProfile[] = [
-  { name: 'default', isActive: true, region: 'us-east-1', hasCredentials: true },
-  { name: 'dev', isActive: false, region: 'us-west-2', roleArn: 'arn:aws:iam::1:role/Dev', hasCredentials: true },
-  { name: 'staging', isActive: false, region: 'eu-west-1', hasCredentials: false },
-  { name: 'prod', isActive: false, region: 'ap-southeast-1', sourceProfile: 'dev', hasCredentials: false }
+  { name: 'default', isActive: true, isLive: true, region: 'us-east-1', hasCredentials: true },
+  { name: 'dev', isActive: false, isLive: false, region: 'us-west-2', roleArn: 'arn:aws:iam::1:role/Dev', hasCredentials: true },
+  { name: 'staging', isActive: false, isLive: false, region: 'eu-west-1', hasCredentials: false },
+  { name: 'prod', isActive: false, isLive: false, region: 'ap-southeast-1', sourceProfile: 'dev', hasCredentials: false }
 ]
 
 interface RenderOpts {
   profiles?: AwsProfile[]
   samlSourcesByAws?: Map<string, SamlProfile[]>
+  samlProviders?: SamlProfile[]
   onSwitch?: (name: string) => void
   onRename?: (p: AwsProfile) => void
   onDelete?: (name: string) => void
@@ -25,6 +26,7 @@ function renderList(opts: RenderOpts = {}) {
     loading: false,
     selectedName: null,
     samlSourcesByAws: opts.samlSourcesByAws ?? new Map<string, SamlProfile[]>(),
+    samlProviders: opts.samlProviders ?? [],
     shellHint: null,
     expiries: new Map<string, ExpiryStatus>(),
     onSelect: vi.fn(),
@@ -164,9 +166,12 @@ describe('ProfileList keyboard navigation', () => {
     const { props } = renderList()
     const list = screen.getByRole('listbox', { name: 'AWS profiles' })
 
+    // End lands on the last card in the *grouped* order: `default` is live
+    // and leads, the rest fall into "Not logged in" alphabetically, so
+    // `staging` is last — not `prod`, which is merely last in the input array.
     fireEvent.keyDown(list, { key: 'End' })
     expect(props.onSelect).toHaveBeenLastCalledWith(
-      expect.objectContaining({ name: 'prod' })
+      expect.objectContaining({ name: 'staging' })
     )
 
     fireEvent.keyDown(list, { key: 'Home' })

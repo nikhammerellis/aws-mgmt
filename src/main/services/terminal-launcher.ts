@@ -1,11 +1,19 @@
 import { spawn } from 'child_process'
-import type { ShellHint, ShellFlavor } from '../../renderer/types'
-import { PROFILE_NAME_PATTERN, AWS_OVERRIDE_VARS } from '../../shared/validation'
+import type { LaunchLoginPayload, ShellHint, ShellFlavor } from '../../renderer/types'
+import { PROFILE_NAME_PATTERN, ROLE_ARN_PATTERN, AWS_OVERRIDE_VARS } from '../../shared/validation'
 
 export type { ShellHint }
 
 const NAME_PATTERN = PROFILE_NAME_PATTERN
 const PROFILE_TOKEN = '__PROFILE__'
+
+/**
+ * Both of these end up in a command line, so they are validated here as well
+ * as at the IPC boundary — this function's contract is that it does no
+ * escaping of its own, so nothing unvalidated may reach it.
+ */
+const REGION_PATTERN = /^[a-z0-9-]{1,32}$/
+const SESSION_DURATION_PATTERN = /^\d{1,6}$/
 
 export function exportLineTemplateFor(flavor: ShellFlavor): string {
   switch (flavor) {
@@ -163,11 +171,7 @@ export async function launchTerminalWithCommand(commandLine: string): Promise<vo
   )
 }
 
-export interface LaunchLoginPayload {
-  kind: 'sso' | 'saml-target'
-  profileName: string
-  samlSection?: string
-}
+export type { LaunchLoginPayload }
 
 export async function launchLoginInTerminal(payload: LaunchLoginPayload): Promise<void> {
   if (!NAME_PATTERN.test(payload.profileName)) {
@@ -198,6 +202,40 @@ export async function launchLoginInTerminal(payload: LaunchLoginPayload): Promis
     let cmd = `saml2aws login -a ${payload.samlSection} --profile ${payload.profileName}`
     if (payload.hasRoleArn) cmd += ' --skip-prompt'
     commandLine = cmd
+  } else if (payload.kind === 'saml-role') {
+    // The fan-out shape: one identity-provider block supplies the SAML
+    // assertion, and the role comes from the AWS profile rather than from
+    // ~/.saml2aws. saml2aws caches the assertion, so logging into a second
+    // account this way costs no extra browser round trip.
+    if (!payload.samlSection || !NAME_PATTERN.test(payload.samlSection)) {
+      throw new Error('Invalid saml2aws section name')
+    }
+    if (!ROLE_ARN_PATTERN.test(payload.roleArn ?? '')) {
+      throw new Error('Invalid role ARN')
+    }
+    let cmd =
+      `saml2aws login -a ${payload.samlSection} --profile ${payload.profileName}` +
+      ` --role ${payload.roleArn}`
+    // Region matters: these setups routinely span us-west-2/us-east-1/us-east-2,
+    // and the wrong one silently lands on another account's infrastructure.
+    if (payload.region) {
+      if (!REGION_PATTERN.test(payload.region)) throw new Error('Invalid region')
+      cmd += ` --region ${payload.region}`
+    }
+    // Without an explicit duration saml2aws falls back to the IdP block's
+    // aws_session_duration, which commonly still says 3600 — an hour-long
+    // session where the role allows eight.
+    if (payload.sessionDuration) {
+      if (!SESSION_DURATION_PATTERN.test(payload.sessionDuration)) {
+        throw new Error('Invalid session duration')
+      }
+      cmd += ` --session-duration ${payload.sessionDuration}`
+    }
+    // --skip-prompt is safe here (unlike saml-target) because --role already
+    // answers the only question the picker would ask. --force restarts the
+    // clock even when the existing session is still valid; without it,
+    // "Login" on a nearly-expired profile can appear to do nothing.
+    commandLine = `${cmd} --skip-prompt --force`
   } else {
     throw new Error(`Unsupported login kind: ${payload.kind}`)
   }

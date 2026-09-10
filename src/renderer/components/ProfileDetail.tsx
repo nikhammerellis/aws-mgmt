@@ -8,6 +8,8 @@ import { SecretField } from './SecretField'
 interface ProfileDetailProps {
   profile: AwsProfile | null
   samlSources: SamlProfile[]
+  /** Every ~/.saml2aws section, as candidate assertion sources for fan-out login. */
+  samlProviders: SamlProfile[]
   expiry: ExpiryStatus | null
   onEdit: (profile: AwsProfile) => void
   onDelete: (name: string) => void
@@ -30,6 +32,7 @@ function DetailRow({ label, value }: { label: string; value: string | undefined 
 export function ProfileDetail({
   profile,
   samlSources,
+  samlProviders,
   expiry,
   onEdit,
   onDelete,
@@ -41,8 +44,8 @@ export function ProfileDetail({
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<ProfileTestResult | null>(null)
   const loginAction = useMemo(
-    () => (profile ? getLoginAction(profile, samlSources) : null),
-    [profile, samlSources]
+    () => (profile ? getLoginAction(profile, samlSources, samlProviders) : null),
+    [profile, samlSources, samlProviders]
   )
 
   // Reset test result when the user navigates to a different profile

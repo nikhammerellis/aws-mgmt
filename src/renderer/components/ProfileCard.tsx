@@ -10,6 +10,8 @@ interface ProfileCardProps {
   isSelected: boolean
   isFocused: boolean
   samlSources: SamlProfile[]
+  /** Every ~/.saml2aws section, as candidate assertion sources for fan-out login. */
+  samlProviders: SamlProfile[]
   shellHint: ShellHint | null
   expiry: ExpiryStatus | null
   onSelect: () => void
@@ -39,6 +41,7 @@ export function ProfileCard({
   isSelected,
   isFocused,
   samlSources,
+  samlProviders,
   shellHint,
   expiry,
   onSelect,
@@ -47,7 +50,10 @@ export function ProfileCard({
   onLogin,
   onCopyFeedback
 }: ProfileCardProps) {
-  const loginAction = useMemo(() => getLoginAction(profile, samlSources), [profile, samlSources])
+  const loginAction = useMemo(
+    () => getLoginAction(profile, samlSources, samlProviders),
+    [profile, samlSources, samlProviders]
+  )
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
 
@@ -99,7 +105,9 @@ export function ProfileCard({
 
   return (
     <div
-      className={`profile-card ${isSelected ? 'selected' : ''} ${profile.isActive ? 'active' : ''}`}
+      className={`profile-card ${isSelected ? 'selected' : ''} ${profile.isActive ? 'active' : ''} ${
+        profile.isActive && !profile.isLive && !profile.isStatic ? 'active-not-live' : ''
+      }`}
       onClick={onSelect}
       role="option"
       aria-selected={isSelected}
@@ -107,7 +115,7 @@ export function ProfileCard({
     >
       <div className="profile-card-header">
         <div className="profile-card-name">
-          {profile.isActive && <ActiveBadge />}
+          {profile.isActive && <ActiveBadge live={profile.isLive} isStatic={profile.isStatic} />}
           <span title={profile.name}>{profile.name}</span>
         </div>
         <div className="action-split-button" ref={menuRef}>

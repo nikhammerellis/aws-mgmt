@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.web.tsbuildinfo",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "target": "ESNext",
@@ -18,6 +19,7 @@
   "include": [
     "src/renderer/**/*.ts",
     "src/renderer/**/*.tsx",
-    "src/shared/**/*.ts"
+    "src/shared/**/*.ts",
+    "vitest.setup.renderer.ts"
   ]
 }

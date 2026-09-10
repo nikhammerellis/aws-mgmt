@@ -4,9 +4,9 @@ import { useProfiles } from '../useProfiles'
 import type { AwsProfile } from '../../types'
 
 const mockProfiles: AwsProfile[] = [
-  { name: 'default', isActive: true, region: 'us-east-1', hasCredentials: true },
-  { name: 'dev', isActive: false, region: 'us-west-2', hasCredentials: true },
-  { name: 'staging', isActive: false, region: 'eu-west-1', hasCredentials: false }
+  { name: 'default', isActive: true, isLive: true, region: 'us-east-1', hasCredentials: true },
+  { name: 'dev', isActive: false, isLive: false, region: 'us-west-2', hasCredentials: true },
+  { name: 'staging', isActive: false, isLive: false, region: 'eu-west-1', hasCredentials: false }
 ]
 
 beforeEach(() => {
@@ -118,4 +118,47 @@ describe('useProfiles', () => {
 
     expect(result.current.error).toBe('Switch failed')
   })
+
+  // The hook is now driven by the 60s expiries-changed tick as well as
+  // profiles-changed. Flipping `loading` on those unmounts the whole list —
+  // including the search input, so mid-word keystrokes went nowhere.
+  it('does not re-enter the loading state on event-driven refreshes', async () => {
+    let fireExpiries: (() => void) | undefined
+    window.api.onExpiriesChanged = vi.fn((cb: () => void) => {
+      fireExpiries = cb
+      return () => {}
+    })
+
+    const { result } = renderHook(() => useProfiles())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    const loadingStates: boolean[] = []
+    // Deferred resolution so the refresh is observably in flight.
+    let resolveProfiles: ((v: AwsProfile[]) => void) | undefined
+    window.api.getProfiles = vi.fn(
+      () =>
+        new Promise<AwsProfile[]>((resolve) => {
+          resolveProfiles = resolve
+        })
+    )
+
+    await act(async () => {
+      fireExpiries?.()
+    })
+    loadingStates.push(result.current.loading)
+
+    await act(async () => {
+      resolveProfiles?.(mockProfiles)
+    })
+    loadingStates.push(result.current.loading)
+
+    expect(loadingStates).toEqual([false, false])
+  })
+
+  it('still shows the loading state on the very first load', async () => {
+    const { result } = renderHook(() => useProfiles())
+    expect(result.current.loading).toBe(true)
+    await waitFor(() => expect(result.current.loading).toBe(false))
+  })
 })
+

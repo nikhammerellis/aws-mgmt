@@ -1,20 +1,41 @@
-import { useState, useEffect, useCallback } from 'react'
-import type { AwsProfile, NewProfileData, RenameImpact, RenameOptions, SwitchResult } from '../types'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import type {
+  ActiveContext,
+  AwsProfile,
+  NewProfileData,
+  RenameImpact,
+  RenameOptions,
+  SwitchResult
+} from '../types'
 
 export function useProfiles() {
   const [profiles, setProfiles] = useState<AwsProfile[]>([])
+  const [activeContext, setActiveContext] = useState<ActiveContext | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Only the very first load shows the loading state. Afterwards this hook is
+  // driven by events — the 60s expiry tick and every credentials-file write —
+  // and flipping `loading` on those unmounts the whole list, including the
+  // search box, so anything the user was typing goes to a detached input.
+  const hasLoaded = useRef(false)
+
   const refresh = useCallback(async () => {
     try {
-      setLoading(true)
+      if (!hasLoaded.current) setLoading(true)
       setError(null)
-      const data = await window.api.getProfiles()
+      // Fetched together so the header can never render a profile list and an
+      // "active" label that disagree about which session is live.
+      const [data, context] = await Promise.all([
+        window.api.getProfiles(),
+        window.api.getActiveContext()
+      ])
       setProfiles(data)
+      setActiveContext(context)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load profiles')
     } finally {
+      hasLoaded.current = true
       setLoading(false)
     }
   }, [])
@@ -79,12 +100,19 @@ export function useProfiles() {
 
   useEffect(() => {
     refresh()
-    const unsub = window.api.onProfilesChanged(refresh)
-    return unsub
+    // Credential expiry decides which profiles count as live, so the context
+    // has to follow expiry events as well as profile-file changes.
+    const unsubProfiles = window.api.onProfilesChanged(refresh)
+    const unsubExpiries = window.api.onExpiriesChanged(refresh)
+    return () => {
+      unsubProfiles()
+      unsubExpiries()
+    }
   }, [refresh])
 
   return {
     profiles,
+    activeContext,
     loading,
     error,
     refresh,

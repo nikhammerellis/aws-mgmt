@@ -8,6 +8,7 @@ import {
 } from 'react'
 import type { AwsProfile, LaunchLoginPayload, SamlProfile, ShellHint } from '../types'
 import type { ExpiryStatus } from '../hooks/useProfileExpiries'
+import { flattenGroups, groupProfiles } from '../lib/profile-order'
 import { ProfileCard } from './ProfileCard'
 
 interface ProfileListProps {
@@ -15,6 +16,8 @@ interface ProfileListProps {
   loading: boolean
   selectedName: string | null
   samlSourcesByAws: Map<string, SamlProfile[]>
+  /** Every ~/.saml2aws section, as candidate assertion sources for fan-out login. */
+  samlProviders: SamlProfile[]
   shellHint: ShellHint | null
   expiries: Map<string, ExpiryStatus>
   onSelect: (profile: AwsProfile) => void
@@ -53,6 +56,7 @@ export const ProfileList = forwardRef<ProfileListHandle, ProfileListProps>(funct
     loading,
     selectedName,
     samlSourcesByAws,
+    samlProviders,
     shellHint,
     expiries,
     onSelect,
@@ -79,10 +83,15 @@ export const ProfileList = forwardRef<ProfileListHandle, ProfileListProps>(funct
   }))
 
   const trimmed = query.trim().toLowerCase()
-  const filtered = useMemo(
-    () => profiles.filter((p) => matchesQuery(p, trimmed)),
-    [profiles, trimmed]
+
+  // Group first, then flatten. `filtered` is the flat sequence in the exact
+  // order the cards render, so arrow-key navigation walks what the user sees
+  // rather than the order the main process happened to hand us.
+  const groups = useMemo(
+    () => groupProfiles(profiles.filter((p) => matchesQuery(p, trimmed)), expiries),
+    [profiles, trimmed, expiries]
   )
+  const filtered = useMemo(() => flattenGroups(groups), [groups])
 
   const focusedIndex = focusedName
     ? filtered.findIndex((p) => p.name === focusedName)
@@ -199,24 +208,33 @@ export const ProfileList = forwardRef<ProfileListHandle, ProfileListProps>(funct
           ref={listRef}
           onKeyDown={handleListKeyDown}
         >
-          {filtered.map((profile) => (
-            <ProfileCard
-              key={profile.name}
-              profile={profile}
-              isSelected={profile.name === selectedName}
-              isFocused={profile.name === focusedName}
-              samlSources={samlSourcesByAws.get(profile.name) ?? []}
-              shellHint={shellHint}
-              expiry={expiries.get(profile.name) ?? null}
-              onSelect={() => {
-                setFocusedName(profile.name)
-                onSelect(profile)
-              }}
-              onSwitch={() => onSwitch(profile.name)}
-              onLaunchTerminal={onLaunchTerminal}
-              onLogin={onLogin}
-              onCopyFeedback={onCopyFeedback}
-            />
+          {groups.map((group) => (
+            <div className="profile-group" key={group.tier} role="group" aria-label={group.label}>
+              <div className="profile-group-header" title={group.hint}>
+                <span className={`profile-group-label tier-${group.tier}`}>{group.label}</span>
+                <span className="profile-group-count">{group.profiles.length}</span>
+              </div>
+              {group.profiles.map((profile) => (
+                <ProfileCard
+                  key={profile.name}
+                  profile={profile}
+                  isSelected={profile.name === selectedName}
+                  isFocused={profile.name === focusedName}
+                  samlSources={samlSourcesByAws.get(profile.name) ?? []}
+                  samlProviders={samlProviders}
+                  shellHint={shellHint}
+                  expiry={expiries.get(profile.name) ?? null}
+                  onSelect={() => {
+                    setFocusedName(profile.name)
+                    onSelect(profile)
+                  }}
+                  onSwitch={() => onSwitch(profile.name)}
+                  onLaunchTerminal={onLaunchTerminal}
+                  onLogin={onLogin}
+                  onCopyFeedback={onCopyFeedback}
+                />
+              ))}
+            </div>
           ))}
         </div>
       )}

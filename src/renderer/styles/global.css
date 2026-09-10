@@ -157,6 +157,55 @@ body {
   flex-shrink: 0;
 }
 
+/*
+ * The badge marks the selected profile; its colour says whether that profile
+ * can actually be used. Green is reserved for a live session — a profile whose
+ * credentials expired days ago must not look identical to one that works.
+ */
+.active-badge.is-stale {
+  background: var(--red);
+  box-shadow: none;
+}
+
+/* Long-lived IAM keys: usable, but nothing to expire and nothing to log in to. */
+.active-badge.is-static {
+  background: var(--text-muted);
+  box-shadow: none;
+}
+
+/* Header status chips. Sit beside the profile name, so they need to read as
+   annotations rather than as part of it. */
+.active-warning,
+.active-stale {
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--red);
+  background: rgba(244, 67, 54, 0.12);
+  white-space: nowrap;
+}
+
+.active-static {
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: rgba(90, 100, 120, 0.18);
+  white-space: nowrap;
+}
+
+/* "+N more live" — informational, not a warning. */
+.active-extra {
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--green);
+  background: rgba(76, 175, 80, 0.12);
+  white-space: nowrap;
+  cursor: default;
+}
+
 /* Error Banner */
 .error-banner {
   padding: 8px 20px;
@@ -212,6 +261,12 @@ body {
 
 .profile-card.active {
   border-left: 3px solid var(--green);
+}
+
+/* Selected, but holding no usable session — the green rail would claim
+   otherwise. Static-key profiles keep the green rail: they do work. */
+.profile-card.active-not-live {
+  border-left-color: var(--red);
 }
 
 .profile-card-header {
@@ -1540,4 +1595,139 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
+}
+
+/* Profile list grouping — live sessions first, so the profiles you can
+   actually use are never below the ones you can't. */
+.profile-group + .profile-group {
+  margin-top: 14px;
+}
+
+.profile-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 6px;
+  position: sticky;
+  top: -8px;
+  background: var(--bg-primary);
+  z-index: 1;
+}
+
+.profile-group-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.profile-group-label.tier-live {
+  color: var(--green);
+}
+
+.profile-group-label.tier-expired {
+  color: var(--red);
+}
+
+.profile-group-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--tag-bg);
+  border-radius: 8px;
+  padding: 1px 6px;
+}
+
+.profile-group-header::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Identity-provider card: a ~/.saml2aws block is a way to authenticate, and
+   the AWS account comes from the profile you log in to. The card says so. */
+.saml-header {
+  align-items: flex-start;
+}
+
+.saml-subtitle {
+  margin-top: 4px;
+  max-width: 68ch;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.saml-subtitle code {
+  background: var(--code-bg);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 11px;
+}
+
+.meta-tag.saml-mode-fanout {
+  background: var(--tag-credentials-bg);
+  color: var(--tag-credentials-text);
+}
+
+.meta-tag.saml-mode-pinned {
+  background: var(--tag-role-bg);
+  color: var(--tag-role-text);
+}
+
+.saml-card-targets {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.saml-targets-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.saml-targets-label:not(:first-child) {
+  margin-top: 12px;
+}
+
+.saml-targets-count {
+  border-radius: 8px;
+  background: var(--tag-bg);
+  padding: 1px 6px;
+  letter-spacing: 0;
+}
+
+.saml-target-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.saml-targets-empty {
+  max-width: 64ch;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.meta-tag.target-live {
+  border: 1px solid var(--green-dim);
+}
+
+.target-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 5px var(--green-dim);
+  vertical-align: middle;
 }

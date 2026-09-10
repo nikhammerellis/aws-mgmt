@@ -291,3 +291,59 @@ describe('deleteAwsConfigProfile', () => {
     )
   })
 })
+
+describe('x_saml_role_arn — the app-owned role override', () => {
+  const ROLE = 'arn:aws:iam::111111111111:role/Admin-Logistics'
+
+  it('reads the key back off disk', async () => {
+    mockReadIni.mockResolvedValue({
+      'profile logistics': { region: 'us-west-2', x_saml_role_arn: ROLE }
+    })
+
+    const [logistics] = await readAwsConfig()
+    expect(logistics.x_saml_role_arn).toBe(ROLE)
+  })
+
+  it('writes it without disturbing the AWS CLI keys around it', async () => {
+    mockReadIni.mockResolvedValue({
+      'profile logistics': { region: 'us-west-2', output: 'json', credential_process: '/bin/thing' }
+    })
+
+    await writeAwsConfigProfile({
+      name: 'logistics',
+      region: 'us-west-2',
+      output: 'json',
+      x_saml_role_arn: ROLE
+    })
+
+    const written = mockWriteIni.mock.calls[0][1] as Record<string, Record<string, string>>
+    expect(written['profile logistics']).toEqual({
+      region: 'us-west-2',
+      output: 'json',
+      credential_process: '/bin/thing',
+      x_saml_role_arn: ROLE
+    })
+  })
+
+  it('clears the key when the override is removed', async () => {
+    mockReadIni.mockResolvedValue({
+      'profile logistics': { region: 'us-west-2', x_saml_role_arn: ROLE }
+    })
+
+    await writeAwsConfigProfile({ name: 'logistics', region: 'us-west-2' })
+
+    const written = mockWriteIni.mock.calls[0][1] as Record<string, Record<string, string>>
+    expect(written['profile logistics']).not.toHaveProperty('x_saml_role_arn')
+  })
+
+  it('never writes a bare role_arn in its place', async () => {
+    // role_arn without source_profile makes the AWS CLI fail to resolve the
+    // profile at all, which is why the override needs its own key.
+    mockReadIni.mockResolvedValue({ 'profile logistics': {} })
+
+    await writeAwsConfigProfile({ name: 'logistics', region: 'us-west-2', x_saml_role_arn: ROLE })
+
+    const written = mockWriteIni.mock.calls[0][1] as Record<string, Record<string, string>>
+    expect(written['profile logistics']).not.toHaveProperty('role_arn')
+  })
+})

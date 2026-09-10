@@ -5,7 +5,7 @@ import type { AwsProfile, ProfileTestResult, SamlProfile } from '../../types'
 
 const baseProfile: AwsProfile = {
   name: 'dev',
-  isActive: false,
+  isActive: false, isLive: false,
   region: 'us-west-2',
   output: 'json',
   hasCredentials: true,
@@ -20,6 +20,7 @@ function noop() {
 interface Options {
   profile?: AwsProfile | null
   samlSources?: SamlProfile[]
+  samlProviders?: SamlProfile[]
   onDuplicate?: (p: AwsProfile) => void
   onNavigateToSaml?: (name: string) => void
 }
@@ -34,6 +35,7 @@ function renderDetail(opts: Options = {}) {
       <ProfileDetail
         profile={opts.profile ?? baseProfile}
         samlSources={opts.samlSources ?? []}
+        samlProviders={opts.samlProviders ?? opts.samlSources ?? []}
         expiry={null}
         onEdit={noop}
         onDelete={noop}
@@ -139,6 +141,7 @@ describe('ProfileDetail Test button', () => {
       <ProfileDetail
         profile={{ ...baseProfile, name: 'other' }}
         samlSources={[]}
+        samlProviders={[]}
         expiry={null}
         onEdit={noop}
         onDelete={noop}
